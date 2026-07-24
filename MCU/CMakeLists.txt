@@ -21,8 +21,7 @@ endif()
 # Set the project name
 set(CMAKE_PROJECT_NAME HopWINS-UWBDO)
 
-# Include toolchain file
-include("cmake/gcc-arm-none-eabi.cmake")
+# The cross-compilation toolchain is selected by CMakePresets.json.
 
 # Enable compile command to ease indexing with e.g. clangd
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
@@ -48,16 +47,25 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
+    Boards/HopWINS-UWBDO-PCB-STDWDO/board.c
+    Drivers/Components/UWB/DW3000/dw3000.c
+    Drivers/Components/UWB/DW3000/deca_compat.c
+    Drivers/Components/UWB/DW3000/deca_interface.c
+    Drivers/Components/UWB/DW3000/deca_rsl.c
+    Drivers/Components/UWB/DW3000/dw3000_device.c
 )
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
+    Boards/HopWINS-UWBDO-PCB-STDWDO
+    Drivers/Components/UWB/DW3000
 )
 
 # Add project symbols (macros)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined symbols
+    USE_DRV_DW3000
 )
 
 # Add linked libraries

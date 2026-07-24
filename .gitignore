@@ -1,13 +1,26 @@
-# ====================
 # macOS
-# ====================
-
 .DS_Store
 
-# ====================
-# MCU Project
-# ====================
+# VS Code project settings
+.vscode/*
+!.vscode/settings.json
 
-MCU/build
-MCU/mx.scratch
-MCU/!.settings
+# CMake and Ninja build output
+MCU/build/
+MCU/out/
+MCU/CMakeFiles/
+MCU/CMakeCache.txt
+MCU/cmake_install.cmake
+MCU/compile_commands.json
+MCU/build.ninja
+MCU/.ninja_*
+MCU/*.elf
+MCU/*.map
+MCU/*.hex
+MCU/*.list
+
+# User-specific CMake overrides
+MCU/CMakeUserPresets.json
+
+# STM32CubeMX scratch data
+MCU/mx.scratch/
