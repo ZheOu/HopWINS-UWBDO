@@ -21,7 +21,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "board.h"
+#include "dw3000.h"
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -52,7 +54,10 @@ TIM_HandleTypeDef htim2;
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
-
+dw3000_device_t g_dw3000;
+dw3000_status_t g_dw3000_status;
+dw3000_clock_diagnostic_t g_dw3000_clock_diagnostic;
+dw3000_status_t g_dw3000_clock_status;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -65,13 +70,187 @@ static void MX_I2C2_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_ICACHE_Init(void);
 /* USER CODE BEGIN PFP */
-
+static void APP_ReportUwbStatus(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+static void APP_Uint32ToHex(uint32_t value, uint8_t *text, uint32_t digits)
+{
+  static const uint8_t hex[] = "0123456789ABCDEF";
 
+  for (uint32_t i = 0U; i < digits; i++)
+  {
+    uint32_t shift = (digits - 1U - i) * 4U;
+    text[i] = hex[(value >> shift) & 0x0FU];
+  }
+}
+
+static size_t APP_AppendBytes(
+    uint8_t *buffer,
+    size_t offset,
+    const uint8_t *data,
+    size_t data_len)
+{
+  memcpy(&buffer[offset], data, data_len);
+  return offset + data_len;
+}
+
+static uint32_t APP_CalculateCrc32(const uint8_t *data, size_t data_len)
+{
+  uint32_t crc = HAL_CRC_Calculate(
+      &hcrc,
+      (uint32_t *)(void *)data,
+      (uint32_t)data_len);
+
+  return crc ^ UINT32_C(0xFFFFFFFF);
+}
+
+static void APP_ReportUwbStatus(void)
+{
+  static const uint8_t ok_text[] = "DW3000 INIT OK";
+  static const uint8_t error_text[] = "DW3000 INIT ERROR";
+  static const uint8_t status_text[] = ", STATUS=0x";
+  static const uint8_t device_id_text[] = ", DEV_ID=0x";
+  static const uint8_t clock_ok_text[] = ", CLOCK=OK";
+  static const uint8_t clock_error_text[] = ", CLOCK=ERROR";
+  static const uint8_t clock_status_text[] = ", CLK_STATUS=0x";
+  static const uint8_t pll_result_text[] = ", PLL_RC=0x";
+  static const uint8_t restore_result_text[] = ", RESTORE_RC=0x";
+  static const uint8_t pll_status_text[] = ", PLL_STATUS=0x";
+  static const uint8_t xtal_text[] = ", XTAL=";
+  static const uint8_t lock_text[] = ", LOCK=";
+  static const uint8_t calibration_text[] = ", CAL=";
+  static const uint8_t crc_text[] = ", CRC32=0x";
+  static const uint8_t newline[] = "\r\n";
+  uint8_t report[224];
+  size_t report_len = 0U;
+  uint32_t crc;
+
+  if (g_dw3000_status == DW3000_STATUS_OK)
+  {
+    report_len = APP_AppendBytes(
+        report,
+        report_len,
+        ok_text,
+        sizeof(ok_text) - 1U);
+  }
+  else
+  {
+    report_len = APP_AppendBytes(
+        report,
+        report_len,
+        error_text,
+        sizeof(error_text) - 1U);
+  }
+  report_len = APP_AppendBytes(
+      report,
+      report_len,
+      status_text,
+      sizeof(status_text) - 1U);
+  APP_Uint32ToHex((uint8_t)g_dw3000_status, &report[report_len], 2U);
+  report_len += 2U;
+  report_len = APP_AppendBytes(
+      report,
+      report_len,
+      device_id_text,
+      sizeof(device_id_text) - 1U);
+  APP_Uint32ToHex(g_dw3000.device_id, &report[report_len], 8U);
+  report_len += 8U;
+  if (g_dw3000_clock_status == DW3000_STATUS_OK)
+  {
+    report_len = APP_AppendBytes(
+        report,
+        report_len,
+        clock_ok_text,
+        sizeof(clock_ok_text) - 1U);
+  }
+  else
+  {
+    report_len = APP_AppendBytes(
+        report,
+        report_len,
+        clock_error_text,
+        sizeof(clock_error_text) - 1U);
+  }
+  report_len = APP_AppendBytes(
+      report,
+      report_len,
+      clock_status_text,
+      sizeof(clock_status_text) - 1U);
+  APP_Uint32ToHex((uint8_t)g_dw3000_clock_status, &report[report_len], 2U);
+  report_len += 2U;
+  report_len = APP_AppendBytes(
+      report,
+      report_len,
+      pll_result_text,
+      sizeof(pll_result_text) - 1U);
+  APP_Uint32ToHex(
+      (uint32_t)g_dw3000_clock_diagnostic.pll_result,
+      &report[report_len],
+      8U);
+  report_len += 8U;
+  report_len = APP_AppendBytes(
+      report,
+      report_len,
+      restore_result_text,
+      sizeof(restore_result_text) - 1U);
+  APP_Uint32ToHex(
+      (uint32_t)g_dw3000_clock_diagnostic.restore_result,
+      &report[report_len],
+      8U);
+  report_len += 8U;
+  report_len = APP_AppendBytes(
+      report,
+      report_len,
+      pll_status_text,
+      sizeof(pll_status_text) - 1U);
+  APP_Uint32ToHex(
+      g_dw3000_clock_diagnostic.pll_status,
+      &report[report_len],
+      8U);
+  report_len += 8U;
+  report_len = APP_AppendBytes(
+      report,
+      report_len,
+      xtal_text,
+      sizeof(xtal_text) - 1U);
+  report[report_len++] =
+      g_dw3000_clock_diagnostic.xtal_settled ? (uint8_t)'1' : (uint8_t)'0';
+  report_len = APP_AppendBytes(
+      report,
+      report_len,
+      lock_text,
+      sizeof(lock_text) - 1U);
+  report[report_len++] =
+      g_dw3000_clock_diagnostic.pll_locked ? (uint8_t)'1' : (uint8_t)'0';
+  report_len = APP_AppendBytes(
+      report,
+      report_len,
+      calibration_text,
+      sizeof(calibration_text) - 1U);
+  report[report_len++] =
+      g_dw3000_clock_diagnostic.calibration_done ? (uint8_t)'1' : (uint8_t)'0';
+
+  /* CRC covers the diagnostic payload before the CRC32 field. */
+  crc = APP_CalculateCrc32(report, report_len);
+  report_len = APP_AppendBytes(
+      report,
+      report_len,
+      crc_text,
+      sizeof(crc_text) - 1U);
+  APP_Uint32ToHex(crc, &report[report_len], 8U);
+  report_len += 8U;
+  report_len = APP_AppendBytes(
+      report,
+      report_len,
+      newline,
+      sizeof(newline) - 1U);
+
+  (void)board_pc_transmit(report, report_len);
+}
 /* USER CODE END 0 */
 
 /**
@@ -112,8 +291,16 @@ int main(void)
   MX_SPI1_Init();
   MX_TIM2_Init();
   MX_USART1_UART_Init();
+  MX_ICACHE_Init();
   /* USER CODE BEGIN 2 */
-
+  board_init();
+  g_dw3000_status = dw3000_init(
+      &g_dw3000,
+      board_uwb_get_platform());
+  g_dw3000_clock_status = dw3000_run_clock_diagnostic(
+      &g_dw3000,
+      &g_dw3000_clock_diagnostic);
+  APP_ReportUwbStatus();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -219,8 +406,8 @@ static void MX_CRC_Init(void)
   hcrc.Instance = CRC;
   hcrc.Init.DefaultPolynomialUse = DEFAULT_POLYNOMIAL_ENABLE;
   hcrc.Init.DefaultInitValueUse = DEFAULT_INIT_VALUE_ENABLE;
-  hcrc.Init.InputDataInversionMode = CRC_INPUTDATA_INVERSION_NONE;
-  hcrc.Init.OutputDataInversionMode = CRC_OUTPUTDATA_INVERSION_DISABLE;
+  hcrc.Init.InputDataInversionMode = CRC_INPUTDATA_INVERSION_BYTE;
+  hcrc.Init.OutputDataInversionMode = CRC_OUTPUTDATA_INVERSION_ENABLE;
   hcrc.InputDataFormat = CRC_INPUTDATA_FORMAT_BYTES;
   if (HAL_CRC_Init(&hcrc) != HAL_OK)
   {
@@ -277,7 +464,7 @@ static void MX_I2C2_Init(void)
 
   /* USER CODE END I2C2_Init 1 */
   hi2c2.Instance = I2C2;
-  hi2c2.Init.Timing = 0x30909DEC;
+  hi2c2.Init.Timing = 0x00F07BFF;
   hi2c2.Init.OwnAddress1 = 0;
   hi2c2.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   hi2c2.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
@@ -310,6 +497,38 @@ static void MX_I2C2_Init(void)
 }
 
 /**
+  * @brief ICACHE Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ICACHE_Init(void)
+{
+
+  /* USER CODE BEGIN ICACHE_Init 0 */
+
+  /* USER CODE END ICACHE_Init 0 */
+
+  /* USER CODE BEGIN ICACHE_Init 1 */
+
+  /* USER CODE END ICACHE_Init 1 */
+
+  /** Enable instruction cache in 1-way (direct mapped cache)
+  */
+  if (HAL_ICACHE_ConfigAssociativityMode(ICACHE_1WAY) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_ICACHE_Enable() != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ICACHE_Init 2 */
+
+  /* USER CODE END ICACHE_Init 2 */
+
+}
+
+/**
   * @brief SPI1 Initialization Function
   * @param None
   * @retval None
@@ -334,18 +553,18 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
   hspi1.Init.CRCPolynomial = 0x7;
-  hspi1.Init.NSSPMode = SPI_NSS_PULSE_ENABLE;
+  hspi1.Init.NSSPMode = SPI_NSS_PULSE_DISABLE;
   hspi1.Init.NSSPolarity = SPI_NSS_POLARITY_LOW;
   hspi1.Init.FifoThreshold = SPI_FIFO_THRESHOLD_01DATA;
   hspi1.Init.MasterSSIdleness = SPI_MASTER_SS_IDLENESS_00CYCLE;
   hspi1.Init.MasterInterDataIdleness = SPI_MASTER_INTERDATA_IDLENESS_00CYCLE;
   hspi1.Init.MasterReceiverAutoSusp = SPI_MASTER_RX_AUTOSUSP_DISABLE;
-  hspi1.Init.MasterKeepIOState = SPI_MASTER_KEEP_IO_STATE_DISABLE;
+  hspi1.Init.MasterKeepIOState = SPI_MASTER_KEEP_IO_STATE_ENABLE;
   hspi1.Init.IOSwap = SPI_IO_SWAP_DISABLE;
   hspi1.Init.ReadyMasterManagement = SPI_RDY_MASTER_MANAGEMENT_INTERNALLY;
   hspi1.Init.ReadyPolarity = SPI_RDY_POLARITY_HIGH;
@@ -385,7 +604,7 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 0;
+  htim2.Init.Prescaler = 38400;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim2.Init.Period = 4294967295;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -430,11 +649,11 @@ static void MX_USART1_UART_Init(void)
 
   /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
-  huart1.Init.BaudRate = 10000000;
+  huart1.Init.BaudRate = 5000000;
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;
-  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.Mode = UART_MODE_TX;
   huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   huart1.Init.OverSampling = UART_OVERSAMPLING_16;
   huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
@@ -448,11 +667,7 @@ static void MX_USART1_UART_Init(void)
   {
     Error_Handler();
   }
-  if (HAL_UARTEx_SetRxFifoThreshold(&huart1, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_DisableFifoMode(&huart1) != HAL_OK)
+  if (HAL_UARTEx_EnableFifoMode(&huart1) != HAL_OK)
   {
     Error_Handler();
   }
@@ -487,7 +702,10 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIO_FPGARST_GPIO_Port, GPIO_FPGARST_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, GPIO_DWRST_Pin|SPI1_CSDW_Pin|SPI1_CSFPGA_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIO_UWBRST_GPIO_Port, GPIO_UWBRST_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOA, SPI1_CSUWB_Pin|SPI1_CSFPGA_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin : GPIO_FPGAEN_Pin */
   GPIO_InitStruct.Pin = GPIO_FPGAEN_Pin;
@@ -509,17 +727,24 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIO_FPGARST_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : GPIO_DWIRQ_Pin */
-  GPIO_InitStruct.Pin = GPIO_DWIRQ_Pin;
+  /*Configure GPIO pin : GPIO_UWBIRQ_Pin */
+  GPIO_InitStruct.Pin = GPIO_UWBIRQ_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIO_DWIRQ_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIO_UWBIRQ_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : GPIO_DWRST_Pin SPI1_CSDW_Pin SPI1_CSFPGA_Pin */
-  GPIO_InitStruct.Pin = GPIO_DWRST_Pin|SPI1_CSDW_Pin|SPI1_CSFPGA_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  /*Configure GPIO pin : GPIO_UWBRST_Pin */
+  GPIO_InitStruct.Pin = GPIO_UWBRST_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIO_UWBRST_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : SPI1_CSUWB_Pin SPI1_CSFPGA_Pin */
+  GPIO_InitStruct.Pin = SPI1_CSUWB_Pin|SPI1_CSFPGA_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pin : GPIO_CLKDP_Pin */
