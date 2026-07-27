@@ -52,10 +52,6 @@ MEMORY
   SRAM4 (xrw)   : ORIGIN = 0x28000000,  LENGTH = 16K
 }
 
-PROVIDE(__fpga_image_start__ = ORIGIN(FPGA_IMAGE));
-PROVIDE(__fpga_image_end__ = ORIGIN(FPGA_IMAGE) + LENGTH(FPGA_IMAGE));
-PROVIDE(__fpga_image_capacity__ = LENGTH(FPGA_IMAGE));
-
 /* Sections */
 SECTIONS
 {
@@ -137,6 +133,24 @@ SECTIONS
     PROVIDE_HIDDEN (__fini_array_end = .);
     . = ALIGN(8);
   } >ROM
+
+  /* Lattice iCE40 configuration image, embedded by the MCU CMake build. */
+  .fpga_image (READONLY) :
+  {
+    . = ALIGN(16);
+    __fpga_image_start__ = .;
+    KEEP(*(.fpga_image))
+    __fpga_image_end__ = .;
+    FILL(0xFFFFFFFF);
+    . = ALIGN(16);
+  } >FPGA_IMAGE
+
+  __fpga_image_capacity__ = LENGTH(FPGA_IMAGE);
+
+  ASSERT(
+    SIZEOF(.fpga_image) <= LENGTH(FPGA_IMAGE),
+    "FPGA image exceeds reserved 128 KiB Flash region"
+  )
 
   /* Used by the startup to initialize data */
   _sidata = LOADADDR(.data);

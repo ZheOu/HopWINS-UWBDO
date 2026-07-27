@@ -35,6 +35,54 @@ enable_language(C ASM)
 
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME})
+set_property(
+    TARGET ${CMAKE_PROJECT_NAME}
+    APPEND PROPERTY LINK_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/STM32U585xx_FLASH.ld"
+)
+
+# Embed the Lattice configuration image in the STM32 internal Flash image.
+set(FPGA_IMAGE_BIN
+    "${CMAKE_CURRENT_SOURCE_DIR}/../FPGA/impl_1/test_impl_1.bin"
+    CACHE FILEPATH "Path to the iCE40 configuration binary")
+set(FPGA_IMAGE_MAX_SIZE 131072)
+set(FPGA_IMAGE_OBJECT "${CMAKE_CURRENT_BINARY_DIR}/fpga_image.o")
+
+if(NOT EXISTS "${FPGA_IMAGE_BIN}")
+    message(FATAL_ERROR "FPGA image not found: ${FPGA_IMAGE_BIN}")
+endif()
+
+file(SIZE "${FPGA_IMAGE_BIN}" FPGA_IMAGE_SIZE)
+if(FPGA_IMAGE_SIZE GREATER FPGA_IMAGE_MAX_SIZE)
+    message(FATAL_ERROR
+        "FPGA image is ${FPGA_IMAGE_SIZE} bytes; reserved Flash capacity is "
+        "${FPGA_IMAGE_MAX_SIZE} bytes")
+endif()
+
+message(STATUS
+    "FPGA image: ${FPGA_IMAGE_BIN} (${FPGA_IMAGE_SIZE}/${FPGA_IMAGE_MAX_SIZE} bytes)")
+
+add_custom_command(
+    OUTPUT "${FPGA_IMAGE_OBJECT}"
+    COMMAND "${CMAKE_OBJCOPY}"
+        -I binary
+        -O elf32-littlearm
+        -B arm
+        --rename-section
+        .data=.fpga_image,alloc,load,readonly,data,contents
+        "${FPGA_IMAGE_BIN}"
+        "${FPGA_IMAGE_OBJECT}"
+    DEPENDS "${FPGA_IMAGE_BIN}"
+    COMMENT "Embedding iCE40 configuration image"
+    VERBATIM
+)
+
+set_source_files_properties(
+    "${FPGA_IMAGE_OBJECT}"
+    PROPERTIES
+        GENERATED TRUE
+        EXTERNAL_OBJECT TRUE
+)
 
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
@@ -54,6 +102,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Drivers/Components/UWB/DW3000/deca_interface.c
     Drivers/Components/UWB/DW3000/deca_rsl.c
     Drivers/Components/UWB/DW3000/dw3000_device.c
+    "${FPGA_IMAGE_OBJECT}"
 )
 
 # Add include paths

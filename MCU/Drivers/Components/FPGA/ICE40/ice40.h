@@ -27,11 +27,11 @@
   * the FPGA (SPI_VCCIO1, pin 22) and the MCU both run from the 1V8 rail, so
   * the bus is a direct connection with no level shifting.
   *
-  * The configuration image is not linked into the firmware; it is programmed
-  * on its own into the FPGA_IMAGE region the linker script reserves at
-  * 0x081E0000 (128 KB, __fpga_image_start__ / __fpga_image_capacity__) and read
-  * back memory-mapped. Use ice40_image_from_flash() to turn that region into an
-  * ice40_image_t.
+  * The MCU build embeds the configuration binary in the FPGA_IMAGE linker
+  * region at 0x081E0000 (128 KB). The linker exports
+  * __fpga_image_start__/__fpga_image_end__ for the exact image bounds and
+  * __fpga_image_capacity__ for the reserved region size. The image is read back
+  * directly through the STM32 memory-mapped Flash interface.
   *
   * CDONE is the only configuration result the MCU can observe: FPGA_CLKOUT
   * (pin 21) only reaches the IPEX test connector, and PA0/TIM2_ETR is fed by
