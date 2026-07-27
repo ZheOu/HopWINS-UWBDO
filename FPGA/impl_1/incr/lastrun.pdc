@@ -1,0 +1,26 @@
+# ============================================================================
+# pin_assign.pdc  --  clk_passthru
+# Device: iCE40UP5K-SG48I
+#
+# Pin numbers taken from Schematic.pdf (component FPGA1) and cross-checked
+# against the iCE40 UltraPlus SG48 package pinout.
+#
+#   site 20 = IOB_25b_G3  net FPGA_CLKIN   <- BUFF1 CLK0 (38.4 MHz)
+#   site 21 = IOB_23b     net FPGA_CLKOUT  -> IPEX / U.FL test connector
+#
+# Do NOT constrain sites 14/15/16/17 (IOB_32a_SPI_SO / IOB_34a_SPI_SCK /
+# IOB_35b_SPI_SS / IOB_33b_SPI_SI) - they are the configuration SPI pins the
+# MCU uses to load this bitstream.
+# ============================================================================
+
+# 38.4 MHz clock input from the on-board clock buffer
+ldc_set_location -site 20 [get_ports FPGA_CLKIN]
+
+# Pass-through output to the test connector
+ldc_set_location -site 21 [get_ports FPGA_CLKOUT]
+
+# Bank 2 is powered from FPGA_1V8 (VCCIO_2 = 1.8 V).
+# If your Radiant version rejects IO_TYPE for iCE40, simply delete these two
+# lines - the bank voltage is fixed by the hardware either way.
+ldc_set_port -iobuf {IO_TYPE=LVCMOS18} [get_ports FPGA_CLKIN]
+ldc_set_port -iobuf {IO_TYPE=LVCMOS18} [get_ports FPGA_CLKOUT]
