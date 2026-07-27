@@ -8,6 +8,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "board.h"
 #include "dw3000.h"
+#include "ice40.h"
 
 /* Peripheral Handles --------------------------------------------------------*/
 extern SPI_HandleTypeDef hspi1;
@@ -30,6 +31,11 @@ static int32_t board_uwb_spi_write(
     uint16_t data_len,
     const uint8_t *trailer,
     uint16_t trailer_len);
+static void board_fpga_set_creset_b(bool high);
+static bool board_fpga_get_cdone(void);
+static void board_fpga_spi_select(void);
+static void board_fpga_spi_deselect(void);
+static int32_t board_fpga_spi_write(const uint8_t *data, uint16_t len);
 static void board_delay_ms(uint32_t delay_ms);
 static void board_delay_us(uint32_t delay_us);
 
@@ -85,6 +91,15 @@ static const dw3000_platform_t s_dw3000_platform = {
   .delay_us = board_delay_us,
   .lock = NULL,
   .unlock = NULL,
+};
+
+static const ice40_platform_t s_ice40_platform = {
+  .set_creset_b = board_fpga_set_creset_b,
+  .get_cdone = board_fpga_get_cdone,
+  .spi_select = board_fpga_spi_select,
+  .spi_deselect = board_fpga_spi_deselect,
+  .spi_write = board_fpga_spi_write,
+  .delay_us = board_delay_us,
 };
 
 static board_status_t hal_to_board_status(HAL_StatusTypeDef status)
@@ -150,6 +165,11 @@ void board_init(void)
 const struct dw3000_platform *board_uwb_get_platform(void)
 {
   return &s_dw3000_platform;
+}
+
+const struct ice40_platform *board_fpga_get_platform(void)
+{
+  return &s_ice40_platform;
 }
 
 void board_clock_select_xo(board_clock_xo_t installed_xo)
@@ -566,6 +586,59 @@ static int32_t board_uwb_spi_write(
 
   board_spi_deselect(BOARD_SPI_TARGET_UWB);
   return (int32_t)status;
+}
+
+/*
+ * CRESET_B is active low. fpga.reset_n carries the raw pin level because its
+ * active_state is GPIO_PIN_SET, so the level maps straight through: false
+ * asserts reset, true releases it.
+ */
+static void board_fpga_set_creset_b(bool high)
+{
+  board_gpio_write(&s_board.fpga.reset_n, high);
+}
+
+static bool board_fpga_get_cdone(void)
+{
+  return board_gpio_read(&s_board.fpga.done);
+}
+
+/*
+ * The DW3000 shares SPI1 and leaves its own baud rate behind, so the
+ * configuration rate is forced here: MSIK 48 MHz / 4 = 12 MHz, inside the 1 MHz
+ * to 25 MHz window iCE40 slave configuration requires. board_spi_set_prescaler()
+ * returns early when the prescaler already matches, so the repeated selects
+ * inside ice40_configure() do not re-initialise SPI1 in the middle of the
+ * sequence.
+ */
+static void board_fpga_spi_select(void)
+{
+  (void)board_spi_set_prescaler(BOARD_SPI_TARGET_FPGA, SPI_BAUDRATEPRESCALER_4);
+  (void)board_spi_select(BOARD_SPI_TARGET_FPGA);
+}
+
+static void board_fpga_spi_deselect(void)
+{
+  board_spi_deselect(BOARD_SPI_TARGET_FPGA);
+}
+
+/*
+ * Deliberately leaves the chip select alone: the whole configuration image has
+ * to be clocked out inside a single SPI_SS low window, and the dummy clocks
+ * around it have to be clocked out with SPI_SS high. Using
+ * board_spi_transmit() here would toggle SPI_SS once per chunk and break
+ * configuration.
+ */
+static int32_t board_fpga_spi_write(const uint8_t *data, uint16_t len)
+{
+  const board_spi_device_t *dev = &s_board.fpga.spi;
+
+  if ((data == NULL) || (len == 0U)) {
+    return (int32_t)BOARD_BAD_ARG;
+  }
+
+  return (int32_t)hal_to_board_status(
+      HAL_SPI_Transmit(dev->hspi, data, len, dev->timeout_ms));
 }
 
 static void board_delay_ms(uint32_t delay_ms)

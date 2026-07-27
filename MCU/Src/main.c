@@ -23,6 +23,7 @@
 /* USER CODE BEGIN Includes */
 #include "board.h"
 #include "dw3000.h"
+#include "ice40.h"
 #include <string.h>
 /* USER CODE END Includes */
 
@@ -58,6 +59,22 @@ dw3000_device_t g_dw3000;
 dw3000_status_t g_dw3000_status;
 dw3000_clock_diagnostic_t g_dw3000_clock_diagnostic;
 dw3000_status_t g_dw3000_clock_status;
+
+/*
+ * The configuration image is not linked into the firmware. It is programmed on
+ * its own into the FPGA_IMAGE region the linker script reserves at 0x081E0000
+ * and read back memory-mapped, so only its bounds are imported here.
+ * __fpga_image_capacity__ is a length, not an address, so its value is taken
+ * from the symbol address.
+ */
+extern uint8_t __fpga_image_start__;
+extern uint8_t __fpga_image_capacity__;
+
+ice40_device_t g_ice40;
+ice40_image_t g_ice40_image;
+ice40_status_t g_ice40_image_status;
+ice40_status_t g_ice40_status;
+uint32_t g_ice40_sync_offset;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -72,6 +89,9 @@ static void MX_TIM2_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_ICACHE_Init(void);
 /* USER CODE BEGIN PFP */
+static void APP_ConfigureFpga(void);
+static void APP_ReportFpgaImage(void);
+static void APP_ReportFpgaResult(void);
 static void APP_ReportUwbStatus(void);
 /* USER CODE END PFP */
 
@@ -106,6 +126,187 @@ static uint32_t APP_CalculateCrc32(const uint8_t *data, size_t data_len)
       (uint32_t)data_len);
 
   return crc ^ UINT32_C(0xFFFFFFFF);
+}
+
+/* Emits a string literal without needing strlen() at runtime. */
+#define APP_PRINT(literal) \
+  (void)board_pc_transmit((const uint8_t *)(literal), sizeof(literal) - 1U)
+
+/*
+ * Progress is printed as it happens rather than only at the end: sending the
+ * image blocks for about 70 ms, so if the sequence stalls the last line on the
+ * terminal says which step it stalled in.
+ */
+static void APP_ConfigureFpga(void)
+{
+  APP_PRINT("\r\n=== HopWINS-UWBDO ===\r\n");
+  APP_PRINT("FPGA: scanning image at 0x081E0000\r\n");
+
+  g_ice40_image_status = ice40_image_from_flash(
+      &__fpga_image_start__,
+      (uint32_t)(uintptr_t)&__fpga_image_capacity__,
+      &g_ice40_image);
+
+  /* Reported separately so a bad image is distinguishable from a bad sequence. */
+  if (g_ice40_image_status == ICE40_STATUS_OK)
+  {
+    (void)ice40_check_image(&g_ice40_image, &g_ice40_sync_offset);
+  }
+  APP_ReportFpgaImage();
+
+  if (g_ice40_image_status != ICE40_STATUS_OK)
+  {
+    g_ice40_status = g_ice40_image_status;
+    APP_PRINT("FPGA: aborted, image rejected, nothing sent\r\n");
+    return;
+  }
+
+  APP_PRINT("FPGA: sending bitstream over SPI1 at 12 MHz\r\n");
+
+  g_ice40_status = ice40_configure(
+      &g_ice40,
+      board_fpga_get_platform(),
+      &g_ice40_image);
+
+  APP_ReportFpgaResult();
+
+  if (g_ice40_status == ICE40_STATUS_OK)
+  {
+    APP_PRINT("FPGA: CDONE high, device is in user mode\r\n");
+  }
+  else
+  {
+    APP_PRINT("FPGA: CDONE low, configuration failed\r\n");
+  }
+}
+
+static void APP_ReportFpgaImage(void)
+{
+  static const uint8_t header_text[] = "FPGA IMAGE";
+  static const uint8_t image_status_text[] = ", IMG_STATUS=0x";
+  static const uint8_t image_len_text[] = ", IMG_LEN=0x";
+  static const uint8_t sync_text[] = ", SYNC=0x";
+  static const uint8_t crc_text[] = ", CRC32=0x";
+  static const uint8_t newline[] = "\r\n";
+  uint8_t report[128];
+  size_t report_len = 0U;
+  uint32_t crc;
+
+  report_len = APP_AppendBytes(
+      report,
+      report_len,
+      header_text,
+      sizeof(header_text) - 1U);
+  report_len = APP_AppendBytes(
+      report,
+      report_len,
+      image_status_text,
+      sizeof(image_status_text) - 1U);
+  APP_Uint32ToHex((uint8_t)g_ice40_image_status, &report[report_len], 2U);
+  report_len += 2U;
+  report_len = APP_AppendBytes(
+      report,
+      report_len,
+      image_len_text,
+      sizeof(image_len_text) - 1U);
+  APP_Uint32ToHex(g_ice40_image.len, &report[report_len], 8U);
+  report_len += 8U;
+  report_len = APP_AppendBytes(
+      report,
+      report_len,
+      sync_text,
+      sizeof(sync_text) - 1U);
+  APP_Uint32ToHex(g_ice40_sync_offset, &report[report_len], 8U);
+  report_len += 8U;
+
+  /* CRC covers the diagnostic payload before the CRC32 field. */
+  crc = APP_CalculateCrc32(report, report_len);
+  report_len = APP_AppendBytes(
+      report,
+      report_len,
+      crc_text,
+      sizeof(crc_text) - 1U);
+  APP_Uint32ToHex(crc, &report[report_len], 8U);
+  report_len += 8U;
+  report_len = APP_AppendBytes(
+      report,
+      report_len,
+      newline,
+      sizeof(newline) - 1U);
+
+  (void)board_pc_transmit(report, report_len);
+}
+
+static void APP_ReportFpgaResult(void)
+{
+  static const uint8_t ok_text[] = "FPGA CONFIG OK";
+  static const uint8_t error_text[] = "FPGA CONFIG ERROR";
+  static const uint8_t status_text[] = ", STATUS=0x";
+  static const uint8_t cdone_clocks_text[] = ", CDONE_CLK=0x";
+  static const uint8_t cdone_text[] = ", CDONE=";
+  static const uint8_t crc_text[] = ", CRC32=0x";
+  static const uint8_t newline[] = "\r\n";
+  const board_components_t *components = board_get_components();
+  uint8_t report[128];
+  size_t report_len = 0U;
+  uint32_t crc;
+
+  if (g_ice40_status == ICE40_STATUS_OK)
+  {
+    report_len = APP_AppendBytes(
+        report,
+        report_len,
+        ok_text,
+        sizeof(ok_text) - 1U);
+  }
+  else
+  {
+    report_len = APP_AppendBytes(
+        report,
+        report_len,
+        error_text,
+        sizeof(error_text) - 1U);
+  }
+  report_len = APP_AppendBytes(
+      report,
+      report_len,
+      status_text,
+      sizeof(status_text) - 1U);
+  APP_Uint32ToHex((uint8_t)g_ice40_status, &report[report_len], 2U);
+  report_len += 2U;
+  report_len = APP_AppendBytes(
+      report,
+      report_len,
+      cdone_clocks_text,
+      sizeof(cdone_clocks_text) - 1U);
+  APP_Uint32ToHex(g_ice40.cdone_clocks, &report[report_len], 8U);
+  report_len += 8U;
+  report_len = APP_AppendBytes(
+      report,
+      report_len,
+      cdone_text,
+      sizeof(cdone_text) - 1U);
+
+  /* Read straight off the pin rather than trusting the cached result. */
+  report[report_len++] =
+      board_gpio_read(&components->fpga.done) ? (uint8_t)'1' : (uint8_t)'0';
+
+  /* CRC covers the diagnostic payload before the CRC32 field. */
+  crc = APP_CalculateCrc32(report, report_len);
+  report_len = APP_AppendBytes(
+      report,
+      report_len,
+      crc_text,
+      sizeof(crc_text) - 1U);
+  APP_Uint32ToHex(crc, &report[report_len], 8U);
+  report_len += 8U;
+  report_len = APP_AppendBytes(
+      report,
+      report_len,
+      newline,
+      sizeof(newline) - 1U);
+
+  (void)board_pc_transmit(report, report_len);
 }
 
 static void APP_ReportUwbStatus(void)
@@ -294,6 +495,11 @@ int main(void)
   MX_ICACHE_Init();
   /* USER CODE BEGIN 2 */
   board_init();
+  /*
+   * The FPGA is configured before the DW3000 so that the result is on the wire
+   * even if UWB bring-up stalls; both share SPI1 and leave it deselected.
+   */
+  APP_ConfigureFpga();
   g_dw3000_status = dw3000_init(
       &g_dw3000,
       board_uwb_get_platform());

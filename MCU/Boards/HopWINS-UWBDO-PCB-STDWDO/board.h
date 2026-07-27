@@ -20,6 +20,7 @@ extern "C" {
 #include <stdint.h>
 
 struct dw3000_platform;
+struct ice40_platform;
 
 typedef enum {
   BOARD_OK = 0,
@@ -110,6 +111,7 @@ typedef struct {
 void board_init(void);
 const board_components_t *board_get_components(void);
 const struct dw3000_platform *board_uwb_get_platform(void);
+const struct ice40_platform *board_fpga_get_platform(void);
 void board_clock_select_xo(board_clock_xo_t installed_xo);
 board_clock_xo_t board_clock_get_selected_xo(void);
 const board_i2c_device_t *board_clock_get_i2c_xo(void);

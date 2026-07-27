@@ -48,6 +48,7 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     Boards/HopWINS-UWBDO-PCB-STDWDO/board.c
+    Drivers/Components/FPGA/ICE40/ice40.c
     Drivers/Components/UWB/DW3000/dw3000.c
     Drivers/Components/UWB/DW3000/deca_compat.c
     Drivers/Components/UWB/DW3000/deca_interface.c
@@ -59,6 +60,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
     Boards/HopWINS-UWBDO-PCB-STDWDO
+    Drivers/Components/FPGA/ICE40
     Drivers/Components/UWB/DW3000
 )
 
