@@ -16,6 +16,10 @@
 #define HOPWINS_ENABLE_BOOT_UWB_CLOCK_DIAGNOSTIC 1
 #endif
 
+#ifndef HOPWINS_ENABLE_PERIODIC_UWB_TX
+#define HOPWINS_ENABLE_PERIODIC_UWB_TX 1
+#endif
+
 static void app_start_fpga(void);
 static void app_start_uwb(void);
 
@@ -28,6 +32,12 @@ void app_init(void)
 
 void app_process(void)
 {
+  uwb_service_tx_event_t tx_event;
+
+  uwb_service_process();
+  if (uwb_service_take_tx_event(&tx_event)) {
+    console_service_report_uwb_tx(&tx_event);
+  }
   console_service_process();
 }
 
@@ -79,4 +89,9 @@ static void app_start_uwb(void)
 #endif
 
   console_service_report_uwb(uwb_service_get_state());
+
+#if HOPWINS_ENABLE_PERIODIC_UWB_TX
+  (void)uwb_service_start_periodic_transmit(&g_uwb_default_profile);
+  console_service_report_uwb_config(uwb_service_get_state());
+#endif
 }

@@ -32,6 +32,10 @@ bool console_protocol_append_hex(
     console_protocol_message_t *message,
     uint32_t value,
     uint32_t digits);
+bool console_protocol_append_hex64(
+    console_protocol_message_t *message,
+    uint64_t value,
+    uint32_t digits);
 bool console_protocol_append_bool(
     console_protocol_message_t *message,
     bool value);

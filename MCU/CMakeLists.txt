@@ -43,7 +43,7 @@ set_property(
 
 # Embed the Lattice configuration image in the STM32 internal Flash image.
 set(FPGA_IMAGE_BIN
-    "${CMAKE_CURRENT_SOURCE_DIR}/../FPGA/impl_1/test_impl_1.bin"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../FPGA/impl_1/HopWINS_UWBDO_FPGA_impl_1.bin"
     CACHE FILEPATH "Path to the iCE40 configuration binary")
 set(FPGA_IMAGE_MAX_SIZE 131072)
 set(FPGA_IMAGE_OBJECT "${CMAKE_CURRENT_BINARY_DIR}/fpga_image.o")

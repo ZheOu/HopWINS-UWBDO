@@ -48,8 +48,16 @@ bool console_protocol_append_hex(
     uint32_t value,
     uint32_t digits)
 {
+  return console_protocol_append_hex64(message, value, digits);
+}
+
+bool console_protocol_append_hex64(
+    console_protocol_message_t *message,
+    uint64_t value,
+    uint32_t digits)
+{
   static const uint8_t hex[] = "0123456789ABCDEF";
-  uint8_t encoded[8];
+  uint8_t encoded[16];
 
   if ((digits == 0U) || (digits > sizeof(encoded))) {
     if (message != NULL) {
@@ -60,7 +68,7 @@ bool console_protocol_append_hex(
 
   for (uint32_t i = 0U; i < digits; i++) {
     uint32_t shift = (digits - 1U - i) * 4U;
-    encoded[i] = hex[(value >> shift) & 0x0FU];
+    encoded[i] = hex[(uint32_t)(value >> shift) & 0x0FU];
   }
 
   return console_protocol_append_bytes(message, encoded, digits);

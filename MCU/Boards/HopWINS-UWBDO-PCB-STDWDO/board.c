@@ -10,6 +10,10 @@
 #include "dw3000.h"
 #include "ice40.h"
 
+#include <string.h>
+
+#define BOARD_PC_TX_BUFFER_SIZE UINT32_C(16384)
+
 /* Peripheral Handles --------------------------------------------------------*/
 extern SPI_HandleTypeDef hspi1;
 extern I2C_HandleTypeDef hi2c2;
@@ -39,6 +43,17 @@ static void board_fpga_spi_deselect(void);
 static int32_t board_fpga_spi_write(const uint8_t *data, uint16_t len);
 static void board_delay_ms(uint32_t delay_ms);
 static void board_delay_us(uint32_t delay_us);
+static uint32_t board_time_ms(void);
+static board_status_t board_pc_tx_start(void);
+static uint32_t board_pc_tx_used(uint32_t head, uint32_t tail);
+
+static uint8_t s_pc_tx_buffer[BOARD_PC_TX_BUFFER_SIZE]
+    __attribute__((aligned(32)));
+static volatile uint32_t s_pc_tx_head;
+static volatile uint32_t s_pc_tx_tail;
+static volatile uint32_t s_pc_tx_in_flight;
+static volatile uint32_t s_pc_tx_errors;
+static volatile bool s_pc_tx_dma_active;
 
 static board_components_t s_board = {
   .uwb = {
@@ -90,6 +105,7 @@ static const dw3000_platform_t s_dw3000_platform = {
   .spi_write = board_uwb_spi_write,
   .delay_ms = board_delay_ms,
   .delay_us = board_delay_us,
+  .get_time_ms = board_time_ms,
   .lock = NULL,
   .unlock = NULL,
 };
@@ -108,6 +124,8 @@ static board_status_t hal_to_board_status(HAL_StatusTypeDef status)
   switch (status) {
     case HAL_OK:
       return BOARD_OK;
+    case HAL_BUSY:
+      return BOARD_BUSY;
     case HAL_TIMEOUT:
       return BOARD_TIMEOUT;
     default:
@@ -156,6 +174,12 @@ static void board_uwb_reset_release(void)
 
 void board_init(void)
 {
+  s_pc_tx_head = 0U;
+  s_pc_tx_tail = 0U;
+  s_pc_tx_in_flight = 0U;
+  s_pc_tx_errors = 0U;
+  s_pc_tx_dma_active = false;
+
   board_spi_deselect_all();
   board_gpio_write(&s_board.fpga.enable, false);
   board_gpio_write(&s_board.fpga.reset_n, false);
@@ -383,9 +407,13 @@ board_status_t board_i2c_mem_read_7bit(
 
 board_status_t board_pc_transmit(const uint8_t *data, size_t len)
 {
-  uint16_t data_len = checked_len(len);
+  uint32_t head;
+  uint32_t tail;
+  uint32_t first_len;
+  board_status_t start_status;
 
-  if ((data == NULL && len != 0U) || (data_len == 0U && len != 0U)) {
+  if ((data == NULL && len != 0U) ||
+      (len >= BOARD_PC_TX_BUFFER_SIZE)) {
     return BOARD_BAD_ARG;
   }
 
@@ -393,7 +421,52 @@ board_status_t board_pc_transmit(const uint8_t *data, size_t len)
     return BOARD_OK;
   }
 
-  return hal_to_board_status(HAL_UART_Transmit(s_board.pc_uart.huart, (uint8_t *)data, data_len, s_board.pc_uart.timeout_ms));
+  head = s_pc_tx_head;
+  tail = s_pc_tx_tail;
+  if (len > (BOARD_PC_TX_BUFFER_SIZE - board_pc_tx_used(head, tail) - 1U)) {
+    return BOARD_BUSY;
+  }
+
+  first_len = BOARD_PC_TX_BUFFER_SIZE - head;
+  if (first_len > len) {
+    first_len = (uint32_t)len;
+  }
+
+  memcpy(&s_pc_tx_buffer[head], data, first_len);
+  if (len > first_len) {
+    memcpy(
+        s_pc_tx_buffer,
+        &data[first_len],
+        len - first_len);
+  }
+
+  __DMB();
+  s_pc_tx_head =
+      (head + (uint32_t)len) % BOARD_PC_TX_BUFFER_SIZE;
+
+  start_status = board_pc_tx_start();
+  return (start_status == BOARD_BUSY) ? BOARD_OK : start_status;
+}
+
+void board_pc_tx_process(void)
+{
+  (void)board_pc_tx_start();
+}
+
+size_t board_pc_tx_available(void)
+{
+  uint32_t used = board_pc_tx_used(s_pc_tx_head, s_pc_tx_tail);
+  return (size_t)(BOARD_PC_TX_BUFFER_SIZE - used - 1U);
+}
+
+bool board_pc_tx_busy(void)
+{
+  return s_pc_tx_dma_active || (s_pc_tx_head != s_pc_tx_tail);
+}
+
+uint32_t board_pc_tx_error_count(void)
+{
+  return s_pc_tx_errors;
 }
 
 board_status_t board_pc_receive(uint8_t *data, size_t len)
@@ -504,6 +577,80 @@ static board_status_t board_spi_set_prescaler(
   board_spi_deselect_all();
   dev->hspi->Init.BaudRatePrescaler = prescaler;
   return hal_to_board_status(HAL_SPI_Init(dev->hspi));
+}
+
+static board_status_t board_pc_tx_start(void)
+{
+  uint32_t head;
+  uint32_t tail;
+  uint32_t transfer_len;
+  HAL_StatusTypeDef status;
+
+  if (s_pc_tx_dma_active) {
+    return BOARD_BUSY;
+  }
+
+  head = s_pc_tx_head;
+  tail = s_pc_tx_tail;
+  if (head == tail) {
+    return BOARD_OK;
+  }
+
+  transfer_len =
+      (head > tail) ? (head - tail) : (BOARD_PC_TX_BUFFER_SIZE - tail);
+  if (transfer_len > UINT16_MAX) {
+    transfer_len = UINT16_MAX;
+  }
+
+  s_pc_tx_in_flight = transfer_len;
+  s_pc_tx_dma_active = true;
+  status = HAL_UART_Transmit_DMA(
+      s_board.pc_uart.huart,
+      &s_pc_tx_buffer[tail],
+      (uint16_t)transfer_len);
+  if (status != HAL_OK) {
+    s_pc_tx_in_flight = 0U;
+    s_pc_tx_dma_active = false;
+    if (status != HAL_BUSY) {
+      s_pc_tx_errors++;
+    }
+  }
+
+  return hal_to_board_status(status);
+}
+
+static uint32_t board_pc_tx_used(uint32_t head, uint32_t tail)
+{
+  return (head >= tail)
+             ? (head - tail)
+             : (BOARD_PC_TX_BUFFER_SIZE - tail + head);
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if ((huart == NULL) || (huart != s_board.pc_uart.huart)) {
+    return;
+  }
+
+  s_pc_tx_tail =
+      (s_pc_tx_tail + s_pc_tx_in_flight) % BOARD_PC_TX_BUFFER_SIZE;
+  s_pc_tx_in_flight = 0U;
+  s_pc_tx_dma_active = false;
+  (void)board_pc_tx_start();
+}
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+  if ((huart == NULL) || (huart != s_board.pc_uart.huart)) {
+    return;
+  }
+
+  if (s_pc_tx_dma_active) {
+    s_pc_tx_tail = s_pc_tx_head;
+    s_pc_tx_in_flight = 0U;
+    s_pc_tx_dma_active = false;
+    s_pc_tx_errors++;
+  }
 }
 
 static int32_t board_uwb_hardware_reset(void)
@@ -696,4 +843,9 @@ static void board_delay_us(uint32_t delay_us)
     ticks_remaining -= elapsed;
     previous = current;
   }
+}
+
+static uint32_t board_time_ms(void)
+{
+  return HAL_GetTick();
 }

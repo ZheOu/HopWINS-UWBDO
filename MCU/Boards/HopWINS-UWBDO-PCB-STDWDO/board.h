@@ -27,6 +27,7 @@ typedef enum {
   BOARD_ERROR = -1,
   BOARD_TIMEOUT = -2,
   BOARD_BAD_ARG = -3,
+  BOARD_BUSY = -4,
 } board_status_t;
 
 typedef enum {
@@ -155,6 +156,10 @@ board_status_t board_i2c_mem_read_7bit(
     size_t len);
 
 board_status_t board_pc_transmit(const uint8_t *data, size_t len);
+void board_pc_tx_process(void);
+size_t board_pc_tx_available(void);
+bool board_pc_tx_busy(void);
+uint32_t board_pc_tx_error_count(void);
 board_status_t board_pc_receive(uint8_t *data, size_t len);
 board_status_t board_crc32_calculate(
     const uint8_t *data,

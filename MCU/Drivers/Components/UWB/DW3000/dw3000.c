@@ -15,12 +15,30 @@
 #define DW3000_PLL_STATUS_XTAL_SETTLED_MASK UINT32_C(0x40)
 #define DW3000_PLL_STATUS_LOCK_MASK         UINT32_C(0x02)
 #define DW3000_PLL_STATUS_CAL_DONE_MASK     UINT32_C(0x01)
+#define DW3000_STANDARD_FRAME_MAX_LEN       127U
+#define DW3000_EXTENDED_FRAME_MAX_LEN       1023U
+#define DW3000_TX_BUFFER_OFFSET             0U
+#define DW3000_STS_DEFAULT_LENGTH           DWT_STS_LEN_64
 
 extern const struct dwt_driver_s dw3000_driver;
 
 static const dw3000_platform_t *s_platform;
 static int32_t s_transport_error;
 static bool s_sdk_ready;
+static bool s_tx_pending;
+static uint16_t s_max_frame_len;
+
+static dw3000_status_t validate_radio_config(
+    const dw3000_radio_config_t *config);
+static dw3000_status_t prepare_transmit(
+    const dw3000_device_t *device,
+    const uint8_t *frame,
+    uint16_t frame_len);
+static bool sts_length_is_valid(uint16_t sts_length);
+static dwt_sts_lengths_e sts_length_to_sdk(uint16_t sts_length);
+static uint64_t timestamp_from_little_endian(
+    const uint8_t *timestamp,
+    uint32_t len);
 
 static void record_transport_status(int32_t status)
 {
@@ -153,7 +171,8 @@ static bool platform_is_valid(const dw3000_platform_t *platform)
          (platform->spi_read != NULL) &&
          (platform->spi_write != NULL) &&
          (platform->delay_ms != NULL) &&
-         (platform->delay_us != NULL);
+         (platform->delay_us != NULL) &&
+         (platform->get_time_ms != NULL);
 }
 
 static dw3000_status_t platform_read_device_id(
@@ -218,6 +237,230 @@ dw3000_status_t dw3000_read_device_id(
              : DW3000_STATUS_UNSUPPORTED_DEVICE;
 }
 
+dw3000_status_t dw3000_configure_radio(
+    dw3000_device_t *device,
+    const dw3000_radio_config_t *config)
+{
+  dwt_config_t sdk_config;
+  dwt_txconfig_t tx_config;
+  dw3000_status_t status;
+
+  if ((device == NULL) || (config == NULL)) {
+    return DW3000_STATUS_BAD_ARG;
+  }
+  if (!device->initialized || !s_sdk_ready || (s_platform == NULL)) {
+    return DW3000_STATUS_NOT_READY;
+  }
+
+  status = validate_radio_config(config);
+  if (status != DW3000_STATUS_OK) {
+    return status;
+  }
+
+  sdk_config = (dwt_config_t){
+    .chan = (uint8_t)config->channel,
+    .txPreambLength = config->preamble_length,
+    .rxPAC = (config->pac_size == DW3000_PAC_SIZE_4)
+                 ? DWT_PAC4
+             : (config->pac_size == DW3000_PAC_SIZE_8)
+                 ? DWT_PAC8
+             : (config->pac_size == DW3000_PAC_SIZE_16)
+                 ? DWT_PAC16
+                 : DWT_PAC32,
+    .txCode = config->tx_preamble_code,
+    .rxCode = config->rx_preamble_code,
+    .sfdType = (dwt_sfd_type_e)config->sfd_type,
+    .dataRate = (config->data_rate == DW3000_DATA_RATE_6M8)
+                    ? DWT_BR_6M8
+                    : DWT_BR_850K,
+    .phrMode = config->extended_phr ? DWT_PHRMODE_EXT : DWT_PHRMODE_STD,
+    .phrRate = DWT_PHRRATE_STD,
+    .sfdTO = config->sfd_timeout,
+    .stsMode = (config->sts_mode == DW3000_STS_MODE_1)
+                   ? DWT_STS_MODE_1
+               : (config->sts_mode == DW3000_STS_MODE_2)
+                   ? DWT_STS_MODE_2
+                   : DWT_STS_MODE_OFF,
+    .stsLength = (config->sts_mode == DW3000_STS_OFF)
+                     ? DW3000_STS_DEFAULT_LENGTH
+                     : sts_length_to_sdk(config->sts_length),
+    .pdoaMode = DWT_PDOA_M0,
+  };
+  tx_config = (dwt_txconfig_t){
+    .PGdly = config->tx_pulse_generator_delay,
+    .power = config->tx_power,
+    .PGcount = config->tx_pulse_generator_count,
+  };
+
+  s_transport_error = 0;
+  device->configured = false;
+  s_tx_pending = false;
+
+  if (dwt_configure(&sdk_config) != (int32_t)DWT_SUCCESS) {
+    return (s_transport_error != 0)
+               ? DW3000_STATUS_SPI_ERROR
+               : DW3000_STATUS_CONFIGURATION_ERROR;
+  }
+
+  dwt_configuretxrf(&tx_config);
+  dwt_settxantennadelay(config->tx_antenna_delay);
+  dwt_setrxantennadelay(config->rx_antenna_delay);
+  if (s_transport_error != 0) {
+    return DW3000_STATUS_SPI_ERROR;
+  }
+
+  s_max_frame_len = config->extended_phr
+                        ? DW3000_EXTENDED_FRAME_MAX_LEN
+                        : DW3000_STANDARD_FRAME_MAX_LEN;
+  device->configured = true;
+  return DW3000_STATUS_OK;
+}
+
+dw3000_status_t dw3000_get_system_time(
+    const dw3000_device_t *device,
+    uint32_t *system_time)
+{
+  uint8_t timestamp[sizeof(uint32_t)];
+
+  if ((device == NULL) || (system_time == NULL)) {
+    return DW3000_STATUS_BAD_ARG;
+  }
+  if (!device->initialized || !device->configured || !s_sdk_ready) {
+    return DW3000_STATUS_NOT_READY;
+  }
+
+  s_transport_error = 0;
+  dwt_readsystime(timestamp);
+  if (s_transport_error != 0) {
+    return DW3000_STATUS_SPI_ERROR;
+  }
+
+  *system_time = (uint32_t)timestamp_from_little_endian(
+      timestamp,
+      (uint32_t)sizeof(timestamp));
+  return DW3000_STATUS_OK;
+}
+
+uint32_t dw3000_microseconds_to_device_time(uint32_t time_us)
+{
+  return US_TO_DTU(time_us);
+}
+
+dw3000_status_t dw3000_transmit_immediate(
+    const dw3000_device_t *device,
+    const uint8_t *frame,
+    uint16_t frame_len)
+{
+  dw3000_status_t status = prepare_transmit(device, frame, frame_len);
+
+  if (status != DW3000_STATUS_OK) {
+    return status;
+  }
+
+  if (dwt_starttx((uint8_t)DWT_START_TX_IMMEDIATE) !=
+      (int32_t)DWT_SUCCESS) {
+    return (s_transport_error != 0)
+               ? DW3000_STATUS_SPI_ERROR
+               : DW3000_STATUS_TX_ERROR;
+  }
+
+  s_tx_pending = true;
+  return DW3000_STATUS_OK;
+}
+
+dw3000_status_t dw3000_transmit_delayed(
+    const dw3000_device_t *device,
+    const uint8_t *frame,
+    uint16_t frame_len,
+    uint32_t transmit_time)
+{
+  dw3000_status_t status = prepare_transmit(device, frame, frame_len);
+
+  if (status != DW3000_STATUS_OK) {
+    return status;
+  }
+
+  dwt_setdelayedtrxtime(transmit_time);
+  if (s_transport_error != 0) {
+    return DW3000_STATUS_SPI_ERROR;
+  }
+
+  if (dwt_starttx((uint8_t)DWT_START_TX_DELAYED) !=
+      (int32_t)DWT_SUCCESS) {
+    return (s_transport_error != 0)
+               ? DW3000_STATUS_SPI_ERROR
+               : DW3000_STATUS_TX_LATE;
+  }
+
+  s_tx_pending = true;
+  return DW3000_STATUS_OK;
+}
+
+dw3000_status_t dw3000_abort_transmit(
+    const dw3000_device_t *device)
+{
+  if (device == NULL) {
+    return DW3000_STATUS_BAD_ARG;
+  }
+  if (!device->initialized || !device->configured || !s_sdk_ready) {
+    return DW3000_STATUS_NOT_READY;
+  }
+
+  s_transport_error = 0;
+  dwt_forcetrxoff();
+  dwt_writesysstatuslo(
+      DWT_INT_TXFRS_BIT_MASK | DWT_INT_HPDWARN_BIT_MASK);
+  s_tx_pending = false;
+  return (s_transport_error == 0)
+             ? DW3000_STATUS_OK
+             : DW3000_STATUS_SPI_ERROR;
+}
+
+dw3000_status_t dw3000_poll_transmit(
+    const dw3000_device_t *device,
+    dw3000_tx_result_t *result)
+{
+  uint8_t timestamp[5];
+  uint32_t system_status;
+
+  if ((device == NULL) || (result == NULL)) {
+    return DW3000_STATUS_BAD_ARG;
+  }
+
+  result->complete = false;
+  result->timestamp = 0U;
+
+  if (!device->initialized || !device->configured || !s_sdk_ready) {
+    return DW3000_STATUS_NOT_READY;
+  }
+  if (!s_tx_pending) {
+    return DW3000_STATUS_NOT_READY;
+  }
+
+  s_transport_error = 0;
+  system_status = dwt_readsysstatuslo();
+  if (s_transport_error != 0) {
+    s_tx_pending = false;
+    return DW3000_STATUS_SPI_ERROR;
+  }
+  if ((system_status & DWT_INT_TXFRS_BIT_MASK) == 0U) {
+    return DW3000_STATUS_OK;
+  }
+
+  dwt_writesysstatuslo(DWT_INT_TXFRS_BIT_MASK);
+  dwt_readtxtimestamp(timestamp);
+  s_tx_pending = false;
+  if (s_transport_error != 0) {
+    return DW3000_STATUS_SPI_ERROR;
+  }
+
+  result->timestamp =
+      timestamp_from_little_endian(timestamp, (uint32_t)sizeof(timestamp)) &
+      DW3000_TIMESTAMP_MASK;
+  result->complete = true;
+  return DW3000_STATUS_OK;
+}
+
 dw3000_status_t dw3000_init(
     dw3000_device_t *device,
     const dw3000_platform_t *platform)
@@ -231,9 +474,12 @@ dw3000_status_t dw3000_init(
 
   device->device_id = 0U;
   device->initialized = false;
+  device->configured = false;
   s_platform = platform;
   s_transport_error = 0;
   s_sdk_ready = false;
+  s_tx_pending = false;
+  s_max_frame_len = 0U;
 
   if (s_platform->spi_set_slow_rate() != 0) {
     return DW3000_STATUS_PLATFORM_ERROR;
@@ -288,6 +534,144 @@ dw3000_status_t dw3000_init(
 
   device->initialized = true;
   return DW3000_STATUS_OK;
+}
+
+static dw3000_status_t validate_radio_config(
+    const dw3000_radio_config_t *config)
+{
+  bool channel_valid;
+  bool pac_valid;
+  bool rate_valid;
+  bool sfd_valid;
+  bool sts_valid;
+
+  channel_valid =
+      (config->channel == DW3000_CHANNEL_5) ||
+      (config->channel == DW3000_CHANNEL_9);
+  pac_valid =
+      (config->pac_size == DW3000_PAC_SIZE_4) ||
+      (config->pac_size == DW3000_PAC_SIZE_8) ||
+      (config->pac_size == DW3000_PAC_SIZE_16) ||
+      (config->pac_size == DW3000_PAC_SIZE_32);
+  rate_valid =
+      (config->data_rate == DW3000_DATA_RATE_850K) ||
+      (config->data_rate == DW3000_DATA_RATE_6M8);
+  sfd_valid =
+      (config->sfd_type <= DW3000_SFD_IEEE_4Z);
+  sts_valid =
+      (config->sts_mode <= DW3000_STS_MODE_2);
+
+  if (!channel_valid || !pac_valid || !rate_valid || !sfd_valid ||
+      !sts_valid ||
+      !CHECK_PREAMBLE_LEN_VALIDITY(config->preamble_length) ||
+      (config->tx_preamble_code == 0U) ||
+      (config->tx_preamble_code > 24U) ||
+      (config->rx_preamble_code == 0U) ||
+      (config->rx_preamble_code > 24U) ||
+      (config->sfd_timeout == 0U) ||
+      (config->tx_pulse_generator_delay > 0x3FU) ||
+      ((config->sts_mode != DW3000_STS_OFF) &&
+       !sts_length_is_valid(config->sts_length))) {
+    return DW3000_STATUS_BAD_ARG;
+  }
+
+  return DW3000_STATUS_OK;
+}
+
+static bool sts_length_is_valid(uint16_t sts_length)
+{
+  switch (sts_length) {
+    case 16U:
+    case 32U:
+    case 64U:
+    case 128U:
+    case 256U:
+    case 512U:
+    case 1024U:
+    case 2048U:
+      return true;
+    default:
+      return false;
+  }
+}
+
+static dwt_sts_lengths_e sts_length_to_sdk(uint16_t sts_length)
+{
+  switch (sts_length) {
+    case 16U:
+      return DWT_STS_LEN_16;
+    case 32U:
+      return DWT_STS_LEN_32;
+    case 128U:
+      return DWT_STS_LEN_128;
+    case 256U:
+      return DWT_STS_LEN_256;
+    case 512U:
+      return DWT_STS_LEN_512;
+    case 1024U:
+      return DWT_STS_LEN_1024;
+    case 2048U:
+      return DWT_STS_LEN_2048;
+    case 64U:
+    default:
+      return DWT_STS_LEN_64;
+  }
+}
+
+static dw3000_status_t prepare_transmit(
+    const dw3000_device_t *device,
+    const uint8_t *frame,
+    uint16_t frame_len)
+{
+  uint16_t over_air_len;
+
+  if ((device == NULL) || (frame == NULL) || (frame_len == 0U)) {
+    return DW3000_STATUS_BAD_ARG;
+  }
+  if (!device->initialized || !device->configured || !s_sdk_ready) {
+    return DW3000_STATUS_NOT_READY;
+  }
+  if (s_tx_pending) {
+    return DW3000_STATUS_BUSY;
+  }
+
+  over_air_len = frame_len + DW3000_FRAME_FCS_LEN;
+  if ((over_air_len < frame_len) || (over_air_len > s_max_frame_len)) {
+    return DW3000_STATUS_BAD_ARG;
+  }
+
+  s_transport_error = 0;
+  dwt_writesysstatuslo(
+      DWT_INT_TXFRS_BIT_MASK | DWT_INT_HPDWARN_BIT_MASK);
+  if (dwt_writetxdata(
+          frame_len,
+          (uint8_t *)(uintptr_t)frame,
+          DW3000_TX_BUFFER_OFFSET) != (int32_t)DWT_SUCCESS) {
+    return (s_transport_error != 0)
+               ? DW3000_STATUS_SPI_ERROR
+               : DW3000_STATUS_TX_ERROR;
+  }
+
+  dwt_writetxfctrl(
+      over_air_len,
+      DW3000_TX_BUFFER_OFFSET,
+      0U);
+  return (s_transport_error == 0)
+             ? DW3000_STATUS_OK
+             : DW3000_STATUS_SPI_ERROR;
+}
+
+static uint64_t timestamp_from_little_endian(
+    const uint8_t *timestamp,
+    uint32_t len)
+{
+  uint64_t value = 0U;
+
+  for (uint32_t i = 0U; i < len; i++) {
+    value |= (uint64_t)timestamp[i] << (8U * i);
+  }
+
+  return value;
 }
 
 dw3000_status_t dw3000_run_clock_diagnostic(
