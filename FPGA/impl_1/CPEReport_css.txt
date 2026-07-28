@@ -1,18 +1,104 @@
 ###File created by Lattice CPE. Do not modify.###
-create_clock -name {FPGA_CLKIN} -period 26.041666667 [get_ports FPGA_CLKIN] originating in top was kept as is.
+create_clock -name {CLK_IN} -period 26.041666667 [get_ports CLK_IN] originating in top was kept as is.
 
-create_generated_clock -name {FPGA_CLKOUT} -source [get_ports FPGA_CLKIN] -divide_by 1 [get_ports FPGA_CLKOUT] originating in top was kept as is.
+set_output_delay -clock [get_clocks CLK_IN] -min 9 [get_ports {CLK PPS SYNC}] originating in top was kept as is.
+
+set_output_delay -clock [get_clocks CLK_IN] -max 14.542 [get_ports {CLK PPS SYNC}] originating in top was kept as is.
+
+set_input_delay -clock [get_clocks CLK_IN] -min 0 [get_ports FPGA_EN] originating in top was kept as is.
+
+set_input_delay -clock [get_clocks CLK_IN] -max 5 [get_ports FPGA_EN] originating in top was kept as is.
 
 # ============================================================================ originating in top was kept as is.
 
-# timing.sdc  --  clk_passthru originating in top was kept as is.
+# timing.sdc  --  HopWINS-UWBDO  iCE40UP5K-SG48I originating in top was kept as is.
 
 # originating in top was kept as is.
 
-# 38.4 MHz board oscillator -> FPGA_CLKIN, forwarded 1:1 to FPGA_CLKOUT. originating in top was kept as is.
+# CLK, PPS and SYNC all leave through I/O cell output registers on the CLK_IN originating in top was kept as is.
 
-# The design is purely combinational, so this file only documents the input originating in top was kept as is.
+# net, so what matters is not their absolute delay but how closely they track originating in top was kept as is.
 
-# frequency and declares the forwarded clock at the output port. originating in top was kept as is.
+# each other. All three are held to the same physical clock-to-out window: originating in top was kept as is.
+
+#     9.500 ns .. 11.500 ns originating in top was kept as is.
+
+# measured 9.813 .. 11.206 ns at LVCMOS18 with DRIVE=4, so about 0.3 ns of originating in top was kept as is.
+
+# margin on each side. The width of this window is the skew budget. originating in top was kept as is.
+
+# The window has to be re-centred whenever the I/O standard or drive strength originating in top was kept as is.
+
+# changes: moving from LVCMOS33/8 mA to LVCMOS18/4 mA slowed every output by a originating in top was kept as is.
+
+# uniform 1.56 to 1.66 ns, which left the previous 8.000..10.000 window behind originating in top was kept as is.
+
+# and failed PPS and SYNC by 1.206 ns each while CLK still passed. originating in top was kept as is.
+
+# 38.4 MHz -> 26.041666667 ns, half period 13.020833 ns originating in top was kept as is.
+
+# CLK is intentionally not declared with create_generated_clock. Declaring an originating in top was kept as is.
+
+# output port as a clock makes the engine treat it as a clock source, and clock originating in top was kept as is.
+
+# sources are left out of the I/O Timing Analysis clock-to-out table, which is originating in top was kept as is.
+
+# exactly why CLK used to be missing next to PPS and SYNC. originating in top was kept as is.
+
+# ---------------------------------------------------------------------------- originating in top was kept as is.
+
+# All three outputs, single-edge and analysed against the full period. This is originating in top was kept as is.
+
+# the constraint set for top.v with CLK_OUT_DDR = 0, where CLK is a regular originating in top was kept as is.
+
+# registered output like the other two and therefore belongs in the same group originating in top was kept as is.
+
+# with the same numbers. originating in top was kept as is.
+
+#     allowed clock-to-out <= period - (-max) = 26.042 - 14.542 = 11.500 ns originating in top was kept as is.
+
+#     allowed clock-to-out >= (-min)                           =  9.000 ns originating in top was kept as is.
+
+# PPS and SYNC measured 11.206 (max, R) and 10.996 (min, R). CLK should land originating in top was kept as is.
+
+# lower, near 9.9 ns, because its I/O cell receives the clock 1.32 ns earlier; originating in top was kept as is.
+
+# the -min side is loosened to 9.000 to leave room for that. Re-centre once the originating in top was kept as is.
+
+# real number is in. originating in top was kept as is.
+
+# For CLK_OUT_DDR = 1 instead, CLK must be pulled out of the group above and originating in top was kept as is.
+
+# constrained separately, because a DDR port drives on both edges and is originating in top was kept as is.
+
+# analysed against the HALF period, 13.021 ns, not the full 26.042 ns. Reusing originating in top was kept as is.
+
+# -max 14.542 there asks for a clock-to-out of 13.021 - 14.542, a negative originating in top was kept as is.
+
+# number, which is unsatisfiable and lands as a large negative slack on that one originating in top was kept as is.
+
+# port while the other two look nearly fine. originating in top was kept as is.
+
+# Swap the three lines above for these four: originating in top was kept as is.
+
+#   set_output_delay -clock CLK_IN -min  9.500 [get_ports {PPS SYNC}] originating in top was kept as is.
+
+#   set_output_delay -clock CLK_IN -max 14.542 [get_ports {PPS SYNC}] originating in top was kept as is.
+
+#   set_output_delay -clock CLK_IN -min  9.500 [get_ports CLK] originating in top was kept as is.
+
+#   set_output_delay -clock CLK_IN -max  1.521 [get_ports CLK] originating in top was kept as is.
+
+# both expressing the same physical 9.500..11.500 ns window, the CLK -max being originating in top was kept as is.
+
+# computed from 13.021 rather than 26.042. originating in top was kept as is.
+
+# FPGA_EN is asynchronous and resynchronised in the RTL, so it carries no originating in top was kept as is.
+
+# timing requirement. The input delay keeps it out of the "IO ports are not originating in top was kept as is.
+
+# constrained" warning; the false path keeps PAR from working on it. originating in top was kept as is.
+
+set_false_path -from [get_ports FPGA_EN] originating in top was kept as is.
 
 

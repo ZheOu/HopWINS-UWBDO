@@ -1,9 +1,0 @@
--ver "D:/ice40/ice40k/ip/pmi/pmi_iCE40UP.v"
--lib pmi -vhd "D:/ice40/ice40k/ip/pmi/pmi_iCE40UP.vhd"
--ver "C:/Users/zhang/my_designs/test/source/impl_1/top.v"
--sdc "../source/impl_1/timing.sdc"
--path "C:/Users/zhang/my_designs/test" "C:/Users/zhang/my_designs/test"
--top top
--isTop
--a "iCE40UP"
--t "iCE40UP5K"

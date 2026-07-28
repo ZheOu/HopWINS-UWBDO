@@ -1,0 +1,12 @@
+---------------------------------------------------
+Report for cell top
+   Instance path: top
+                     Cell usage:
+                                  cell	      count    Res Usage(%)
+                                 IOLGC	       4.00        100.0
+                                  LUT4	         50        100.0
+                               LUTGATE	         22        100.0
+                                LUTCCU	         28        100.0
+                                 IOREG	          4        100.0
+                                 IOBUF	          5        100.0
+                                PFUREG	         32        100.0

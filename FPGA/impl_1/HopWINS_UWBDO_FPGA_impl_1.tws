@@ -1,0 +1,1787 @@
+Lattice Timing Report -  Setup  and Hold, Version Radiant Software (64-bit) 2026.1.0.37.0
+
+Tue Jul 28 18:15:35 2026
+
+Copyright (c) 1991-1994 by NeoCAD Inc. All rights reserved.
+Copyright (c) 1995 AT&T Corp.   All rights reserved.
+Copyright (c) 1995-2001 Lucent Technologies Inc.  All rights reserved.
+Copyright (c) 2001 Agere Systems   All rights reserved.
+Copyright (c) 2002-2026 Lattice Semiconductor Corporation,  All rights reserved.
+
+Command line:    timing -sethld -v 10 -u 10 -endpoints 10 -nperend 1 -html -rpt HopWINS_UWBDO_FPGA_impl_1.tws HopWINS_UWBDO_FPGA_impl_1_syn.udb -gui -msgset C:/Users/zhang/OneDrive/Desktop/UWBDO/HopWINS-UWBDO/FPGA/promote.xml
+
+-----------------------------------------
+Design:          top
+Family:          iCE40UP
+Device:          iCE40UP5K
+Package:         SG48
+Performance:     High-Performance_1.2V
+Package Status:                     Preliminary    Version 1.5
+-----------------------------------------
+
+
+=====================================================================
+                    Table of Contents
+=====================================================================
+    1  Timing Overview
+        1.1  SDC Constraints
+        1.2  Constraint Coverage
+        1.3  Overall Summary
+        1.4  Unconstrained Report
+        1.5  Combinational Loop
+    2  Setup at Speed Grade High-Performance_1.2V Corner at 100 Degrees
+        2.1  Clock Summary
+        2.2  Endpoint slacks
+        2.3  Detailed Report
+    3  Hold at Speed Grade M Corner at -40 Degrees
+        3.1  Endpoint slacks
+        3.2  Detailed Report
+
+=====================================================================
+                    End of Table of Contents
+=====================================================================
+
+==============================================
+1  Timing Overview
+==============================================
+
+1.1  SDC Constraints
+=====================
+create_clock -name {CLK_IN} -period 26.041666667 [get_ports CLK_IN]
+set_output_delay -clock [get_clocks CLK_IN] -min 9 [get_ports {CLK PPS SYNC}]
+set_output_delay -clock [get_clocks CLK_IN] -max 14.542 [get_ports {CLK PPS SYNC}]
+set_input_delay -clock [get_clocks CLK_IN] -min 0 [get_ports FPGA_EN]
+set_input_delay -clock [get_clocks CLK_IN] -max 5 [get_ports FPGA_EN]
+set_false_path -from [get_ports FPGA_EN]
+
+1.2  Constraint Coverage
+---------------------------
+Constraint Coverage: 100%
+
+
+1.3  Overall Summary
+---------------------------
+ Setup at Speed Grade High-Performance_1.2V Corner at 100 Degrees     Timing Errors: 0 endpoints;  Total Negative Slack: 0.000 ns 
+ Hold at Speed Grade M Corner at -40 Degrees                          Timing Errors: 0 endpoints;  Total Negative Slack: 0.000 ns 
+
+1.4  Unconstrained Report
+===========================
+
+1.4.1  Unconstrained Start/End Points
+--------------------------------------
+
+Clocked but unconstrained timing start points
+--------------------------------------------------
+There is no start point satisfying reporting criteria
+
+
+Clocked but unconstrained timing end points
+--------------------------------------------------
+There is no end point satisfying reporting criteria
+
+
+1.4.2  Start/End Points Without Timing Constraints
+---------------------------------------------------
+
+I/O ports without constraint
+----------------------------
+Possible constraints to use on I/O ports are:
+set_input_delay,
+set_output_delay,
+set_max_delay,
+create_clock,
+create_generated_clock,
+...
+
+--------------------------------------------------
+There is no end point satisfying reporting criteria
+
+
+Nets without clock definition
+Define a clock on a top level port or a generated clock on a clock divider pin associated with this net(s).
+--------------------------------------------------
+There is no instance satisfying reporting criteria
+
+
+
+1.5  Combinational Loop
+========================
+None
+
+===============================================================
+2  Setup at Speed Grade High-Performance_1.2V Corner at 100 Degrees
+===============================================================
+
+2.1  Clock Summary
+=======================
+
+2.1.1 Clock "CLK_IN"
+=======================
+create_clock -name {CLK_IN} -period 26.041666667 [get_ports CLK_IN]
+
+Single Clock Domain
+-------------------------------------------------------------------------------------------------------
+              Clock CLK_IN              |                    |       Period       |     Frequency      
+-------------------------------------------------------------------------------------------------------
+ From CLK_IN                            |             Target |          26.042 ns |         38.400 MHz 
+                                        | Actual (all paths) |          22.816 ns |         43.829 MHz 
+-------------------------------------------------------------------------------------------------------
+
+Clock Domain Crossing
+
+2.2  Endpoint slacks
+=======================
+-------------------------------------------------------
+          Listing 10 End Points          |    Slack    
+-------------------------------------------------------
+PPS                                      |    3.226 ns 
+SYNC                                     |    3.226 ns 
+CLK                                      |    3.226 ns 
+pps_counter_55__i25/D                    |    7.604 ns 
+pps_counter_55__i24/D                    |    8.162 ns 
+pps_counter_55__i23/D                    |    8.720 ns 
+pps_counter_55__i22/D                    |    9.278 ns 
+pps_counter_55__i21/D                    |    9.836 ns 
+pps_counter_55__i20/D                    |   10.394 ns 
+pps_counter_55__i19/D                    |   10.952 ns 
+-------------------------------------------------------
+                                         |             
+Setup # of endpoints with negative slack:|           0 
+                                         |             
+-------------------------------------------------------
+
+2.3  Detailed Report
+=======================
+
+
+XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+Detail report of critical paths
+
+XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+                    Detailed Report for timing paths 
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+
+++++ Path 1 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+
+Path Begin       : pps_iol/PADDO  (IOL_B)
+Path End         : PPS  (top)
+Source Clock     : CLK_IN (R)
+Destination Clock: CLK_IN (R)
+Logic Level      : 2
+Delay Ratio      : 36.5% (route), 63.5% (logic)
+Clock Skew       : -2.585 ns 
+Setup Constraint : 26.041 ns 
+Path Slack       : 3.225 ns  (Passed)
+
+
+Source Clock Path
+Name                                      Cell/Site Name  Delay Name             Incr       Arrival/Required Time  Fanout  
+----------------------------------------  --------------  ---------------------  ---------  ---------------------  ------  
+CLK_IN                                    top             CLOCK LATENCY              0.000                  0.000  1       
+CLK_IN                                                    NET DELAY                  0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY       0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY                  2.075                  2.585  36      
+pps_iol/OUTCLK                                            CLOCK PIN                  0.000                  2.585  1       
+
+
+Data Path
+Name                                      Cell/Site Name  Delay Name             Incr       Arrival/Required Time  Fanout  
+----------------------------------------  --------------  ---------------------  ---------  ---------------------  ------  
+pps_iol/OUTCLK->pps_iol/PADDO             IOL_B           OUTCLK_TO_PADDO_DELAY      1.526                  4.111  1       
+pps_paddo                                                 NET DELAY                  2.075                  6.186  1       
+pps_ob.bb_inst/I->pps_ob.bb_inst/B                        PADDO_TO_IOPAD_DELAY       2.088                  8.274  1       
+PPS                                                       NET DELAY                  0.000                  8.274  1       
+PPS                                                       ENDPOINT                   0.000                  8.274  1       
+
+
+Destination Clock Path
+Name                                      Cell/Site Name  Delay Name             Incr       Arrival/Required Time  Fanout  
+----------------------------------------  --------------  ---------------------  ---------  ---------------------  ------  
+                                                          CONSTRAINT                                       26.041  
+                                                          CLOCK LATENCY              0.000                 26.041  
+                                                          Uncertainty             -(0.000)                 26.041  
+                                                          Output delay           -(14.542)                 11.499  
+----------------------------------------  --------------  ---------------------  ---------  ---------------------  ------  
+Required Time                                                                                              11.499  
+Arrival Time                                                                                             -(8.273)  
+----------------------------------------  --------------  ---------------------  ---------  ---------------------  ------  
+Path Slack  (Passed)                                                                                        3.225  
+
+
+
+
+++++ Path 2 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+
+Path Begin       : sync_iol/PADDO  (IOL_B)
+Path End         : SYNC  (top)
+Source Clock     : CLK_IN (R)
+Destination Clock: CLK_IN (R)
+Logic Level      : 2
+Delay Ratio      : 36.5% (route), 63.5% (logic)
+Clock Skew       : -2.585 ns 
+Setup Constraint : 26.041 ns 
+Path Slack       : 3.225 ns  (Passed)
+
+
+Source Clock Path
+Name                                      Cell/Site Name  Delay Name             Incr       Arrival/Required Time  Fanout  
+----------------------------------------  --------------  ---------------------  ---------  ---------------------  ------  
+CLK_IN                                    top             CLOCK LATENCY              0.000                  0.000  1       
+CLK_IN                                                    NET DELAY                  0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY       0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY                  2.075                  2.585  36      
+sync_iol/OUTCLK                                           CLOCK PIN                  0.000                  2.585  1       
+
+
+Data Path
+Name                                      Cell/Site Name  Delay Name             Incr       Arrival/Required Time  Fanout  
+----------------------------------------  --------------  ---------------------  ---------  ---------------------  ------  
+sync_iol/OUTCLK->sync_iol/PADDO           IOL_B           OUTCLK_TO_PADDO_DELAY      1.526                  4.111  1       
+sync_paddo                                                NET DELAY                  2.075                  6.186  1       
+sync_ob.bb_inst/I->sync_ob.bb_inst/B                      PADDO_TO_IOPAD_DELAY       2.088                  8.274  1       
+SYNC                                                      NET DELAY                  0.000                  8.274  1       
+SYNC                                                      ENDPOINT                   0.000                  8.274  1       
+
+
+Destination Clock Path
+Name                                      Cell/Site Name  Delay Name             Incr       Arrival/Required Time  Fanout  
+----------------------------------------  --------------  ---------------------  ---------  ---------------------  ------  
+                                                          CONSTRAINT                                       26.041  
+                                                          CLOCK LATENCY              0.000                 26.041  
+                                                          Uncertainty             -(0.000)                 26.041  
+                                                          Output delay           -(14.542)                 11.499  
+----------------------------------------  --------------  ---------------------  ---------  ---------------------  ------  
+Required Time                                                                                              11.499  
+Arrival Time                                                                                             -(8.273)  
+----------------------------------------  --------------  ---------------------  ---------  ---------------------  ------  
+Path Slack  (Passed)                                                                                        3.225  
+
+
+
+
+++++ Path 3 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+
+Path Begin       : g_clk_sdr.clk_iol/PADDO  (IOL_B)
+Path End         : CLK  (top)
+Source Clock     : CLK_IN (R)
+Destination Clock: CLK_IN (R)
+Logic Level      : 2
+Delay Ratio      : 36.5% (route), 63.5% (logic)
+Clock Skew       : -2.585 ns 
+Setup Constraint : 26.041 ns 
+Path Slack       : 3.225 ns  (Passed)
+
+
+Source Clock Path
+Name                                      Cell/Site Name  Delay Name             Incr       Arrival/Required Time  Fanout  
+----------------------------------------  --------------  ---------------------  ---------  ---------------------  ------  
+CLK_IN                                    top             CLOCK LATENCY              0.000                  0.000  1       
+CLK_IN                                                    NET DELAY                  0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY       0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY                  2.075                  2.585  36      
+g_clk_sdr.clk_iol/OUTCLK                                  CLOCK PIN                  0.000                  2.585  1       
+
+
+Data Path
+Name                                      Cell/Site Name  Delay Name             Incr       Arrival/Required Time  Fanout  
+----------------------------------------  --------------  ---------------------  ---------  ---------------------  ------  
+g_clk_sdr.clk_iol/OUTCLK->g_clk_sdr.clk_iol/PADDO
+                                          IOL_B           OUTCLK_TO_PADDO_DELAY      1.526                  4.111  1       
+clk_paddo                                                 NET DELAY                  2.075                  6.186  1       
+clk_ob.bb_inst/I->clk_ob.bb_inst/B                        PADDO_TO_IOPAD_DELAY       2.088                  8.274  1       
+CLK                                                       NET DELAY                  0.000                  8.274  1       
+CLK                                                       ENDPOINT                   0.000                  8.274  1       
+
+
+Destination Clock Path
+Name                                      Cell/Site Name  Delay Name             Incr       Arrival/Required Time  Fanout  
+----------------------------------------  --------------  ---------------------  ---------  ---------------------  ------  
+                                                          CONSTRAINT                                       26.041  
+                                                          CLOCK LATENCY              0.000                 26.041  
+                                                          Uncertainty             -(0.000)                 26.041  
+                                                          Output delay           -(14.542)                 11.499  
+----------------------------------------  --------------  ---------------------  ---------  ---------------------  ------  
+Required Time                                                                                              11.499  
+Arrival Time                                                                                             -(8.273)  
+----------------------------------------  --------------  ---------------------  ---------  ---------------------  ------  
+Path Slack  (Passed)                                                                                        3.225  
+
+
+
+
+++++ Path 4 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+
+Path Begin       : pps_counter_55__i0/Q  (FD1P3XZ)
+Path End         : pps_counter_55__i25/D  (FD1P3XZ)
+Source Clock     : CLK_IN (R)
+Destination Clock: CLK_IN (R)
+Logic Level      : 27
+Delay Ratio      : 51.3% (route), 48.7% (logic)
+Clock Skew       : 0.000 ns 
+Setup Constraint : 26.041 ns 
+Path Slack       : 7.603 ns  (Passed)
+
+
+Source Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr      Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+CLK_IN                                    top             CLOCK LATENCY            0.000                  0.000  1       
+CLK_IN                                                    NET DELAY                0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY     0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY                2.075                  2.585  36      
+pps_counter_55__i0/CK                                     CLOCK PIN                0.000                  2.585  1       
+
+
+Data Path
+Name                                      Cell/Site Name  Delay Name            Incr      Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+pps_counter_55__i0/CK->pps_counter_55__i0/Q
+                                          FD1P3XZ         CK_TO_Q_DELAY            1.391                  3.976  2       
+pps_counter[0]                                            NET DELAY                0.280                  4.256  2       
+pps_counter_55_add_4_1/C1->pps_counter_55_add_4_1/CO1
+                                          FA2             C1_TO_CO1_DELAY          0.344                  4.600  2       
+n477                                                      NET DELAY                0.280                  4.880  2       
+pps_counter_55_add_4_3/CI0->pps_counter_55_add_4_3/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  5.158  2       
+n1082                                                     NET DELAY                0.280                  5.438  2       
+pps_counter_55_add_4_3/CI1->pps_counter_55_add_4_3/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                  5.716  2       
+n479                                                      NET DELAY                0.280                  5.996  2       
+pps_counter_55_add_4_5/CI0->pps_counter_55_add_4_5/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  6.274  2       
+n1085                                                     NET DELAY                0.280                  6.554  2       
+pps_counter_55_add_4_5/CI1->pps_counter_55_add_4_5/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                  6.832  2       
+n481                                                      NET DELAY                0.280                  7.112  2       
+pps_counter_55_add_4_7/CI0->pps_counter_55_add_4_7/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  7.390  2       
+n1088                                                     NET DELAY                0.280                  7.670  2       
+pps_counter_55_add_4_7/CI1->pps_counter_55_add_4_7/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                  7.948  2       
+n483                                                      NET DELAY                0.280                  8.228  2       
+pps_counter_55_add_4_9/CI0->pps_counter_55_add_4_9/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  8.506  2       
+n1091                                                     NET DELAY                0.280                  8.786  2       
+pps_counter_55_add_4_9/CI1->pps_counter_55_add_4_9/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                  9.064  2       
+n485                                                      NET DELAY                0.280                  9.344  2       
+pps_counter_55_add_4_11/CI0->pps_counter_55_add_4_11/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  9.622  2       
+n1094                                                     NET DELAY                0.280                  9.902  2       
+pps_counter_55_add_4_11/CI1->pps_counter_55_add_4_11/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 10.180  2       
+n487                                                      NET DELAY                0.280                 10.460  2       
+pps_counter_55_add_4_13/CI0->pps_counter_55_add_4_13/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 10.738  2       
+n1097                                                     NET DELAY                0.280                 11.018  2       
+pps_counter_55_add_4_13/CI1->pps_counter_55_add_4_13/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 11.296  2       
+n489                                                      NET DELAY                0.280                 11.576  2       
+pps_counter_55_add_4_15/CI0->pps_counter_55_add_4_15/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 11.854  2       
+n1100                                                     NET DELAY                0.280                 12.134  2       
+pps_counter_55_add_4_15/CI1->pps_counter_55_add_4_15/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 12.412  2       
+n491                                                      NET DELAY                0.280                 12.692  2       
+pps_counter_55_add_4_17/CI0->pps_counter_55_add_4_17/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 12.970  2       
+n1103                                                     NET DELAY                0.280                 13.250  2       
+pps_counter_55_add_4_17/CI1->pps_counter_55_add_4_17/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 13.528  2       
+n493                                                      NET DELAY                0.280                 13.808  2       
+pps_counter_55_add_4_19/CI0->pps_counter_55_add_4_19/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 14.086  2       
+n1106                                                     NET DELAY                0.280                 14.366  2       
+pps_counter_55_add_4_19/CI1->pps_counter_55_add_4_19/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 14.644  2       
+n495                                                      NET DELAY                0.280                 14.924  2       
+pps_counter_55_add_4_21/CI0->pps_counter_55_add_4_21/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 15.202  2       
+n1109                                                     NET DELAY                0.280                 15.482  2       
+pps_counter_55_add_4_21/CI1->pps_counter_55_add_4_21/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 15.760  2       
+n497                                                      NET DELAY                0.280                 16.040  2       
+pps_counter_55_add_4_23/CI0->pps_counter_55_add_4_23/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 16.318  2       
+n1112                                                     NET DELAY                0.280                 16.598  2       
+pps_counter_55_add_4_23/CI1->pps_counter_55_add_4_23/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 16.876  2       
+n499                                                      NET DELAY                0.280                 17.156  2       
+pps_counter_55_add_4_25/CI0->pps_counter_55_add_4_25/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 17.434  2       
+n1115                                                     NET DELAY                0.280                 17.714  2       
+pps_counter_55_add_4_25/CI1->pps_counter_55_add_4_25/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 17.992  2       
+n501                                                      NET DELAY                0.280                 18.272  2       
+pps_counter_55_add_4_27/D0->pps_counter_55_add_4_27/S0
+                                          FA2             D0_TO_S0_DELAY           0.477                 18.749  1       
+n109[25]                                                  NET DELAY                2.075                 20.824  1       
+pps_counter_55__i25/D                                     ENDPOINT                 0.000                 20.824  1       
+
+
+Destination Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr      Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+                                                          CONSTRAINT               0.000                 26.041  1       
+CLK_IN                                    top             CLOCK LATENCY            0.000                 26.041  1       
+CLK_IN                                                    NET DELAY                0.000                 26.041  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY     0.510                 26.551  36      
+CLK_IN_c                                                  NET DELAY                2.075                 28.626  36      
+pps_counter_55__i25/CK                                    CLOCK PIN                0.000                 28.626  1       
+                                                          Uncertainty           -(0.000)                 28.626  
+                                                          Setup time            -(0.199)                 28.427  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+Required Time                                                                                            28.427  
+Arrival Time                                                                                          -(20.823)  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+Path Slack  (Passed)                                                                                      7.603  
+
+
+
+
+++++ Path 5 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+
+Path Begin       : pps_counter_55__i0/Q  (FD1P3XZ)
+Path End         : pps_counter_55__i24/D  (FD1P3XZ)
+Source Clock     : CLK_IN (R)
+Destination Clock: CLK_IN (R)
+Logic Level      : 26
+Delay Ratio      : 51.3% (route), 48.7% (logic)
+Clock Skew       : 0.000 ns 
+Setup Constraint : 26.041 ns 
+Path Slack       : 8.161 ns  (Passed)
+
+
+Source Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr      Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+CLK_IN                                    top             CLOCK LATENCY            0.000                  0.000  1       
+CLK_IN                                                    NET DELAY                0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY     0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY                2.075                  2.585  36      
+pps_counter_55__i0/CK                                     CLOCK PIN                0.000                  2.585  1       
+
+
+Data Path
+Name                                      Cell/Site Name  Delay Name            Incr      Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+pps_counter_55__i0/CK->pps_counter_55__i0/Q
+                                          FD1P3XZ         CK_TO_Q_DELAY            1.391                  3.976  2       
+pps_counter[0]                                            NET DELAY                0.280                  4.256  2       
+pps_counter_55_add_4_1/C1->pps_counter_55_add_4_1/CO1
+                                          FA2             C1_TO_CO1_DELAY          0.344                  4.600  2       
+n477                                                      NET DELAY                0.280                  4.880  2       
+pps_counter_55_add_4_3/CI0->pps_counter_55_add_4_3/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  5.158  2       
+n1082                                                     NET DELAY                0.280                  5.438  2       
+pps_counter_55_add_4_3/CI1->pps_counter_55_add_4_3/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                  5.716  2       
+n479                                                      NET DELAY                0.280                  5.996  2       
+pps_counter_55_add_4_5/CI0->pps_counter_55_add_4_5/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  6.274  2       
+n1085                                                     NET DELAY                0.280                  6.554  2       
+pps_counter_55_add_4_5/CI1->pps_counter_55_add_4_5/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                  6.832  2       
+n481                                                      NET DELAY                0.280                  7.112  2       
+pps_counter_55_add_4_7/CI0->pps_counter_55_add_4_7/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  7.390  2       
+n1088                                                     NET DELAY                0.280                  7.670  2       
+pps_counter_55_add_4_7/CI1->pps_counter_55_add_4_7/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                  7.948  2       
+n483                                                      NET DELAY                0.280                  8.228  2       
+pps_counter_55_add_4_9/CI0->pps_counter_55_add_4_9/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  8.506  2       
+n1091                                                     NET DELAY                0.280                  8.786  2       
+pps_counter_55_add_4_9/CI1->pps_counter_55_add_4_9/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                  9.064  2       
+n485                                                      NET DELAY                0.280                  9.344  2       
+pps_counter_55_add_4_11/CI0->pps_counter_55_add_4_11/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  9.622  2       
+n1094                                                     NET DELAY                0.280                  9.902  2       
+pps_counter_55_add_4_11/CI1->pps_counter_55_add_4_11/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 10.180  2       
+n487                                                      NET DELAY                0.280                 10.460  2       
+pps_counter_55_add_4_13/CI0->pps_counter_55_add_4_13/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 10.738  2       
+n1097                                                     NET DELAY                0.280                 11.018  2       
+pps_counter_55_add_4_13/CI1->pps_counter_55_add_4_13/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 11.296  2       
+n489                                                      NET DELAY                0.280                 11.576  2       
+pps_counter_55_add_4_15/CI0->pps_counter_55_add_4_15/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 11.854  2       
+n1100                                                     NET DELAY                0.280                 12.134  2       
+pps_counter_55_add_4_15/CI1->pps_counter_55_add_4_15/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 12.412  2       
+n491                                                      NET DELAY                0.280                 12.692  2       
+pps_counter_55_add_4_17/CI0->pps_counter_55_add_4_17/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 12.970  2       
+n1103                                                     NET DELAY                0.280                 13.250  2       
+pps_counter_55_add_4_17/CI1->pps_counter_55_add_4_17/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 13.528  2       
+n493                                                      NET DELAY                0.280                 13.808  2       
+pps_counter_55_add_4_19/CI0->pps_counter_55_add_4_19/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 14.086  2       
+n1106                                                     NET DELAY                0.280                 14.366  2       
+pps_counter_55_add_4_19/CI1->pps_counter_55_add_4_19/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 14.644  2       
+n495                                                      NET DELAY                0.280                 14.924  2       
+pps_counter_55_add_4_21/CI0->pps_counter_55_add_4_21/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 15.202  2       
+n1109                                                     NET DELAY                0.280                 15.482  2       
+pps_counter_55_add_4_21/CI1->pps_counter_55_add_4_21/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 15.760  2       
+n497                                                      NET DELAY                0.280                 16.040  2       
+pps_counter_55_add_4_23/CI0->pps_counter_55_add_4_23/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 16.318  2       
+n1112                                                     NET DELAY                0.280                 16.598  2       
+pps_counter_55_add_4_23/CI1->pps_counter_55_add_4_23/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 16.876  2       
+n499                                                      NET DELAY                0.280                 17.156  2       
+pps_counter_55_add_4_25/CI0->pps_counter_55_add_4_25/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 17.434  2       
+n1115                                                     NET DELAY                0.280                 17.714  2       
+pps_counter_55_add_4_25/D1->pps_counter_55_add_4_25/S1
+                                          FA2             D1_TO_S1_DELAY           0.477                 18.191  1       
+n109[24]                                                  NET DELAY                2.075                 20.266  1       
+pps_counter_55__i24/D                                     ENDPOINT                 0.000                 20.266  1       
+
+
+Destination Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr      Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+                                                          CONSTRAINT               0.000                 26.041  1       
+CLK_IN                                    top             CLOCK LATENCY            0.000                 26.041  1       
+CLK_IN                                                    NET DELAY                0.000                 26.041  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY     0.510                 26.551  36      
+CLK_IN_c                                                  NET DELAY                2.075                 28.626  36      
+pps_counter_55__i24/CK                                    CLOCK PIN                0.000                 28.626  1       
+                                                          Uncertainty           -(0.000)                 28.626  
+                                                          Setup time            -(0.199)                 28.427  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+Required Time                                                                                            28.427  
+Arrival Time                                                                                          -(20.265)  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+Path Slack  (Passed)                                                                                      8.161  
+
+
+
+
+++++ Path 6 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+
+Path Begin       : pps_counter_55__i0/Q  (FD1P3XZ)
+Path End         : pps_counter_55__i23/D  (FD1P3XZ)
+Source Clock     : CLK_IN (R)
+Destination Clock: CLK_IN (R)
+Logic Level      : 25
+Delay Ratio      : 51.4% (route), 48.6% (logic)
+Clock Skew       : 0.000 ns 
+Setup Constraint : 26.041 ns 
+Path Slack       : 8.719 ns  (Passed)
+
+
+Source Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr      Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+CLK_IN                                    top             CLOCK LATENCY            0.000                  0.000  1       
+CLK_IN                                                    NET DELAY                0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY     0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY                2.075                  2.585  36      
+pps_counter_55__i0/CK                                     CLOCK PIN                0.000                  2.585  1       
+
+
+Data Path
+Name                                      Cell/Site Name  Delay Name            Incr      Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+pps_counter_55__i0/CK->pps_counter_55__i0/Q
+                                          FD1P3XZ         CK_TO_Q_DELAY            1.391                  3.976  2       
+pps_counter[0]                                            NET DELAY                0.280                  4.256  2       
+pps_counter_55_add_4_1/C1->pps_counter_55_add_4_1/CO1
+                                          FA2             C1_TO_CO1_DELAY          0.344                  4.600  2       
+n477                                                      NET DELAY                0.280                  4.880  2       
+pps_counter_55_add_4_3/CI0->pps_counter_55_add_4_3/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  5.158  2       
+n1082                                                     NET DELAY                0.280                  5.438  2       
+pps_counter_55_add_4_3/CI1->pps_counter_55_add_4_3/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                  5.716  2       
+n479                                                      NET DELAY                0.280                  5.996  2       
+pps_counter_55_add_4_5/CI0->pps_counter_55_add_4_5/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  6.274  2       
+n1085                                                     NET DELAY                0.280                  6.554  2       
+pps_counter_55_add_4_5/CI1->pps_counter_55_add_4_5/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                  6.832  2       
+n481                                                      NET DELAY                0.280                  7.112  2       
+pps_counter_55_add_4_7/CI0->pps_counter_55_add_4_7/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  7.390  2       
+n1088                                                     NET DELAY                0.280                  7.670  2       
+pps_counter_55_add_4_7/CI1->pps_counter_55_add_4_7/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                  7.948  2       
+n483                                                      NET DELAY                0.280                  8.228  2       
+pps_counter_55_add_4_9/CI0->pps_counter_55_add_4_9/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  8.506  2       
+n1091                                                     NET DELAY                0.280                  8.786  2       
+pps_counter_55_add_4_9/CI1->pps_counter_55_add_4_9/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                  9.064  2       
+n485                                                      NET DELAY                0.280                  9.344  2       
+pps_counter_55_add_4_11/CI0->pps_counter_55_add_4_11/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  9.622  2       
+n1094                                                     NET DELAY                0.280                  9.902  2       
+pps_counter_55_add_4_11/CI1->pps_counter_55_add_4_11/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 10.180  2       
+n487                                                      NET DELAY                0.280                 10.460  2       
+pps_counter_55_add_4_13/CI0->pps_counter_55_add_4_13/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 10.738  2       
+n1097                                                     NET DELAY                0.280                 11.018  2       
+pps_counter_55_add_4_13/CI1->pps_counter_55_add_4_13/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 11.296  2       
+n489                                                      NET DELAY                0.280                 11.576  2       
+pps_counter_55_add_4_15/CI0->pps_counter_55_add_4_15/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 11.854  2       
+n1100                                                     NET DELAY                0.280                 12.134  2       
+pps_counter_55_add_4_15/CI1->pps_counter_55_add_4_15/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 12.412  2       
+n491                                                      NET DELAY                0.280                 12.692  2       
+pps_counter_55_add_4_17/CI0->pps_counter_55_add_4_17/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 12.970  2       
+n1103                                                     NET DELAY                0.280                 13.250  2       
+pps_counter_55_add_4_17/CI1->pps_counter_55_add_4_17/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 13.528  2       
+n493                                                      NET DELAY                0.280                 13.808  2       
+pps_counter_55_add_4_19/CI0->pps_counter_55_add_4_19/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 14.086  2       
+n1106                                                     NET DELAY                0.280                 14.366  2       
+pps_counter_55_add_4_19/CI1->pps_counter_55_add_4_19/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 14.644  2       
+n495                                                      NET DELAY                0.280                 14.924  2       
+pps_counter_55_add_4_21/CI0->pps_counter_55_add_4_21/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 15.202  2       
+n1109                                                     NET DELAY                0.280                 15.482  2       
+pps_counter_55_add_4_21/CI1->pps_counter_55_add_4_21/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 15.760  2       
+n497                                                      NET DELAY                0.280                 16.040  2       
+pps_counter_55_add_4_23/CI0->pps_counter_55_add_4_23/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 16.318  2       
+n1112                                                     NET DELAY                0.280                 16.598  2       
+pps_counter_55_add_4_23/CI1->pps_counter_55_add_4_23/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 16.876  2       
+n499                                                      NET DELAY                0.280                 17.156  2       
+pps_counter_55_add_4_25/D0->pps_counter_55_add_4_25/S0
+                                          FA2             D0_TO_S0_DELAY           0.477                 17.633  1       
+n109[23]                                                  NET DELAY                2.075                 19.708  1       
+pps_counter_55__i23/D                                     ENDPOINT                 0.000                 19.708  1       
+
+
+Destination Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr      Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+                                                          CONSTRAINT               0.000                 26.041  1       
+CLK_IN                                    top             CLOCK LATENCY            0.000                 26.041  1       
+CLK_IN                                                    NET DELAY                0.000                 26.041  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY     0.510                 26.551  36      
+CLK_IN_c                                                  NET DELAY                2.075                 28.626  36      
+pps_counter_55__i23/CK                                    CLOCK PIN                0.000                 28.626  1       
+                                                          Uncertainty           -(0.000)                 28.626  
+                                                          Setup time            -(0.199)                 28.427  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+Required Time                                                                                            28.427  
+Arrival Time                                                                                          -(19.707)  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+Path Slack  (Passed)                                                                                      8.719  
+
+
+
+
+++++ Path 7 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+
+Path Begin       : pps_counter_55__i0/Q  (FD1P3XZ)
+Path End         : pps_counter_55__i22/D  (FD1P3XZ)
+Source Clock     : CLK_IN (R)
+Destination Clock: CLK_IN (R)
+Logic Level      : 24
+Delay Ratio      : 51.4% (route), 48.6% (logic)
+Clock Skew       : 0.000 ns 
+Setup Constraint : 26.041 ns 
+Path Slack       : 9.277 ns  (Passed)
+
+
+Source Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr      Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+CLK_IN                                    top             CLOCK LATENCY            0.000                  0.000  1       
+CLK_IN                                                    NET DELAY                0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY     0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY                2.075                  2.585  36      
+pps_counter_55__i0/CK                                     CLOCK PIN                0.000                  2.585  1       
+
+
+Data Path
+Name                                      Cell/Site Name  Delay Name            Incr      Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+pps_counter_55__i0/CK->pps_counter_55__i0/Q
+                                          FD1P3XZ         CK_TO_Q_DELAY            1.391                  3.976  2       
+pps_counter[0]                                            NET DELAY                0.280                  4.256  2       
+pps_counter_55_add_4_1/C1->pps_counter_55_add_4_1/CO1
+                                          FA2             C1_TO_CO1_DELAY          0.344                  4.600  2       
+n477                                                      NET DELAY                0.280                  4.880  2       
+pps_counter_55_add_4_3/CI0->pps_counter_55_add_4_3/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  5.158  2       
+n1082                                                     NET DELAY                0.280                  5.438  2       
+pps_counter_55_add_4_3/CI1->pps_counter_55_add_4_3/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                  5.716  2       
+n479                                                      NET DELAY                0.280                  5.996  2       
+pps_counter_55_add_4_5/CI0->pps_counter_55_add_4_5/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  6.274  2       
+n1085                                                     NET DELAY                0.280                  6.554  2       
+pps_counter_55_add_4_5/CI1->pps_counter_55_add_4_5/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                  6.832  2       
+n481                                                      NET DELAY                0.280                  7.112  2       
+pps_counter_55_add_4_7/CI0->pps_counter_55_add_4_7/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  7.390  2       
+n1088                                                     NET DELAY                0.280                  7.670  2       
+pps_counter_55_add_4_7/CI1->pps_counter_55_add_4_7/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                  7.948  2       
+n483                                                      NET DELAY                0.280                  8.228  2       
+pps_counter_55_add_4_9/CI0->pps_counter_55_add_4_9/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  8.506  2       
+n1091                                                     NET DELAY                0.280                  8.786  2       
+pps_counter_55_add_4_9/CI1->pps_counter_55_add_4_9/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                  9.064  2       
+n485                                                      NET DELAY                0.280                  9.344  2       
+pps_counter_55_add_4_11/CI0->pps_counter_55_add_4_11/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  9.622  2       
+n1094                                                     NET DELAY                0.280                  9.902  2       
+pps_counter_55_add_4_11/CI1->pps_counter_55_add_4_11/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 10.180  2       
+n487                                                      NET DELAY                0.280                 10.460  2       
+pps_counter_55_add_4_13/CI0->pps_counter_55_add_4_13/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 10.738  2       
+n1097                                                     NET DELAY                0.280                 11.018  2       
+pps_counter_55_add_4_13/CI1->pps_counter_55_add_4_13/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 11.296  2       
+n489                                                      NET DELAY                0.280                 11.576  2       
+pps_counter_55_add_4_15/CI0->pps_counter_55_add_4_15/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 11.854  2       
+n1100                                                     NET DELAY                0.280                 12.134  2       
+pps_counter_55_add_4_15/CI1->pps_counter_55_add_4_15/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 12.412  2       
+n491                                                      NET DELAY                0.280                 12.692  2       
+pps_counter_55_add_4_17/CI0->pps_counter_55_add_4_17/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 12.970  2       
+n1103                                                     NET DELAY                0.280                 13.250  2       
+pps_counter_55_add_4_17/CI1->pps_counter_55_add_4_17/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 13.528  2       
+n493                                                      NET DELAY                0.280                 13.808  2       
+pps_counter_55_add_4_19/CI0->pps_counter_55_add_4_19/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 14.086  2       
+n1106                                                     NET DELAY                0.280                 14.366  2       
+pps_counter_55_add_4_19/CI1->pps_counter_55_add_4_19/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 14.644  2       
+n495                                                      NET DELAY                0.280                 14.924  2       
+pps_counter_55_add_4_21/CI0->pps_counter_55_add_4_21/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 15.202  2       
+n1109                                                     NET DELAY                0.280                 15.482  2       
+pps_counter_55_add_4_21/CI1->pps_counter_55_add_4_21/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 15.760  2       
+n497                                                      NET DELAY                0.280                 16.040  2       
+pps_counter_55_add_4_23/CI0->pps_counter_55_add_4_23/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 16.318  2       
+n1112                                                     NET DELAY                0.280                 16.598  2       
+pps_counter_55_add_4_23/D1->pps_counter_55_add_4_23/S1
+                                          FA2             D1_TO_S1_DELAY           0.477                 17.075  1       
+n109[22]                                                  NET DELAY                2.075                 19.150  1       
+pps_counter_55__i22/D                                     ENDPOINT                 0.000                 19.150  1       
+
+
+Destination Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr      Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+                                                          CONSTRAINT               0.000                 26.041  1       
+CLK_IN                                    top             CLOCK LATENCY            0.000                 26.041  1       
+CLK_IN                                                    NET DELAY                0.000                 26.041  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY     0.510                 26.551  36      
+CLK_IN_c                                                  NET DELAY                2.075                 28.626  36      
+pps_counter_55__i22/CK                                    CLOCK PIN                0.000                 28.626  1       
+                                                          Uncertainty           -(0.000)                 28.626  
+                                                          Setup time            -(0.199)                 28.427  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+Required Time                                                                                            28.427  
+Arrival Time                                                                                          -(19.149)  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+Path Slack  (Passed)                                                                                      9.277  
+
+
+
+
+++++ Path 8 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+
+Path Begin       : pps_counter_55__i0/Q  (FD1P3XZ)
+Path End         : pps_counter_55__i21/D  (FD1P3XZ)
+Source Clock     : CLK_IN (R)
+Destination Clock: CLK_IN (R)
+Logic Level      : 23
+Delay Ratio      : 51.4% (route), 48.6% (logic)
+Clock Skew       : 0.000 ns 
+Setup Constraint : 26.041 ns 
+Path Slack       : 9.835 ns  (Passed)
+
+
+Source Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr      Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+CLK_IN                                    top             CLOCK LATENCY            0.000                  0.000  1       
+CLK_IN                                                    NET DELAY                0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY     0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY                2.075                  2.585  36      
+pps_counter_55__i0/CK                                     CLOCK PIN                0.000                  2.585  1       
+
+
+Data Path
+Name                                      Cell/Site Name  Delay Name            Incr      Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+pps_counter_55__i0/CK->pps_counter_55__i0/Q
+                                          FD1P3XZ         CK_TO_Q_DELAY            1.391                  3.976  2       
+pps_counter[0]                                            NET DELAY                0.280                  4.256  2       
+pps_counter_55_add_4_1/C1->pps_counter_55_add_4_1/CO1
+                                          FA2             C1_TO_CO1_DELAY          0.344                  4.600  2       
+n477                                                      NET DELAY                0.280                  4.880  2       
+pps_counter_55_add_4_3/CI0->pps_counter_55_add_4_3/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  5.158  2       
+n1082                                                     NET DELAY                0.280                  5.438  2       
+pps_counter_55_add_4_3/CI1->pps_counter_55_add_4_3/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                  5.716  2       
+n479                                                      NET DELAY                0.280                  5.996  2       
+pps_counter_55_add_4_5/CI0->pps_counter_55_add_4_5/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  6.274  2       
+n1085                                                     NET DELAY                0.280                  6.554  2       
+pps_counter_55_add_4_5/CI1->pps_counter_55_add_4_5/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                  6.832  2       
+n481                                                      NET DELAY                0.280                  7.112  2       
+pps_counter_55_add_4_7/CI0->pps_counter_55_add_4_7/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  7.390  2       
+n1088                                                     NET DELAY                0.280                  7.670  2       
+pps_counter_55_add_4_7/CI1->pps_counter_55_add_4_7/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                  7.948  2       
+n483                                                      NET DELAY                0.280                  8.228  2       
+pps_counter_55_add_4_9/CI0->pps_counter_55_add_4_9/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  8.506  2       
+n1091                                                     NET DELAY                0.280                  8.786  2       
+pps_counter_55_add_4_9/CI1->pps_counter_55_add_4_9/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                  9.064  2       
+n485                                                      NET DELAY                0.280                  9.344  2       
+pps_counter_55_add_4_11/CI0->pps_counter_55_add_4_11/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  9.622  2       
+n1094                                                     NET DELAY                0.280                  9.902  2       
+pps_counter_55_add_4_11/CI1->pps_counter_55_add_4_11/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 10.180  2       
+n487                                                      NET DELAY                0.280                 10.460  2       
+pps_counter_55_add_4_13/CI0->pps_counter_55_add_4_13/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 10.738  2       
+n1097                                                     NET DELAY                0.280                 11.018  2       
+pps_counter_55_add_4_13/CI1->pps_counter_55_add_4_13/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 11.296  2       
+n489                                                      NET DELAY                0.280                 11.576  2       
+pps_counter_55_add_4_15/CI0->pps_counter_55_add_4_15/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 11.854  2       
+n1100                                                     NET DELAY                0.280                 12.134  2       
+pps_counter_55_add_4_15/CI1->pps_counter_55_add_4_15/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 12.412  2       
+n491                                                      NET DELAY                0.280                 12.692  2       
+pps_counter_55_add_4_17/CI0->pps_counter_55_add_4_17/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 12.970  2       
+n1103                                                     NET DELAY                0.280                 13.250  2       
+pps_counter_55_add_4_17/CI1->pps_counter_55_add_4_17/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 13.528  2       
+n493                                                      NET DELAY                0.280                 13.808  2       
+pps_counter_55_add_4_19/CI0->pps_counter_55_add_4_19/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 14.086  2       
+n1106                                                     NET DELAY                0.280                 14.366  2       
+pps_counter_55_add_4_19/CI1->pps_counter_55_add_4_19/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 14.644  2       
+n495                                                      NET DELAY                0.280                 14.924  2       
+pps_counter_55_add_4_21/CI0->pps_counter_55_add_4_21/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 15.202  2       
+n1109                                                     NET DELAY                0.280                 15.482  2       
+pps_counter_55_add_4_21/CI1->pps_counter_55_add_4_21/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 15.760  2       
+n497                                                      NET DELAY                0.280                 16.040  2       
+pps_counter_55_add_4_23/D0->pps_counter_55_add_4_23/S0
+                                          FA2             D0_TO_S0_DELAY           0.477                 16.517  1       
+n109[21]                                                  NET DELAY                2.075                 18.592  1       
+pps_counter_55__i21/D                                     ENDPOINT                 0.000                 18.592  1       
+
+
+Destination Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr      Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+                                                          CONSTRAINT               0.000                 26.041  1       
+CLK_IN                                    top             CLOCK LATENCY            0.000                 26.041  1       
+CLK_IN                                                    NET DELAY                0.000                 26.041  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY     0.510                 26.551  36      
+CLK_IN_c                                                  NET DELAY                2.075                 28.626  36      
+pps_counter_55__i21/CK                                    CLOCK PIN                0.000                 28.626  1       
+                                                          Uncertainty           -(0.000)                 28.626  
+                                                          Setup time            -(0.199)                 28.427  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+Required Time                                                                                            28.427  
+Arrival Time                                                                                          -(18.591)  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+Path Slack  (Passed)                                                                                      9.835  
+
+
+
+
+++++ Path 9 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+
+Path Begin       : pps_counter_55__i0/Q  (FD1P3XZ)
+Path End         : pps_counter_55__i20/D  (FD1P3XZ)
+Source Clock     : CLK_IN (R)
+Destination Clock: CLK_IN (R)
+Logic Level      : 22
+Delay Ratio      : 51.5% (route), 48.5% (logic)
+Clock Skew       : 0.000 ns 
+Setup Constraint : 26.041 ns 
+Path Slack       : 10.393 ns  (Passed)
+
+
+Source Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr      Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+CLK_IN                                    top             CLOCK LATENCY            0.000                  0.000  1       
+CLK_IN                                                    NET DELAY                0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY     0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY                2.075                  2.585  36      
+pps_counter_55__i0/CK                                     CLOCK PIN                0.000                  2.585  1       
+
+
+Data Path
+Name                                      Cell/Site Name  Delay Name            Incr      Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+pps_counter_55__i0/CK->pps_counter_55__i0/Q
+                                          FD1P3XZ         CK_TO_Q_DELAY            1.391                  3.976  2       
+pps_counter[0]                                            NET DELAY                0.280                  4.256  2       
+pps_counter_55_add_4_1/C1->pps_counter_55_add_4_1/CO1
+                                          FA2             C1_TO_CO1_DELAY          0.344                  4.600  2       
+n477                                                      NET DELAY                0.280                  4.880  2       
+pps_counter_55_add_4_3/CI0->pps_counter_55_add_4_3/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  5.158  2       
+n1082                                                     NET DELAY                0.280                  5.438  2       
+pps_counter_55_add_4_3/CI1->pps_counter_55_add_4_3/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                  5.716  2       
+n479                                                      NET DELAY                0.280                  5.996  2       
+pps_counter_55_add_4_5/CI0->pps_counter_55_add_4_5/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  6.274  2       
+n1085                                                     NET DELAY                0.280                  6.554  2       
+pps_counter_55_add_4_5/CI1->pps_counter_55_add_4_5/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                  6.832  2       
+n481                                                      NET DELAY                0.280                  7.112  2       
+pps_counter_55_add_4_7/CI0->pps_counter_55_add_4_7/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  7.390  2       
+n1088                                                     NET DELAY                0.280                  7.670  2       
+pps_counter_55_add_4_7/CI1->pps_counter_55_add_4_7/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                  7.948  2       
+n483                                                      NET DELAY                0.280                  8.228  2       
+pps_counter_55_add_4_9/CI0->pps_counter_55_add_4_9/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  8.506  2       
+n1091                                                     NET DELAY                0.280                  8.786  2       
+pps_counter_55_add_4_9/CI1->pps_counter_55_add_4_9/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                  9.064  2       
+n485                                                      NET DELAY                0.280                  9.344  2       
+pps_counter_55_add_4_11/CI0->pps_counter_55_add_4_11/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  9.622  2       
+n1094                                                     NET DELAY                0.280                  9.902  2       
+pps_counter_55_add_4_11/CI1->pps_counter_55_add_4_11/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 10.180  2       
+n487                                                      NET DELAY                0.280                 10.460  2       
+pps_counter_55_add_4_13/CI0->pps_counter_55_add_4_13/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 10.738  2       
+n1097                                                     NET DELAY                0.280                 11.018  2       
+pps_counter_55_add_4_13/CI1->pps_counter_55_add_4_13/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 11.296  2       
+n489                                                      NET DELAY                0.280                 11.576  2       
+pps_counter_55_add_4_15/CI0->pps_counter_55_add_4_15/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 11.854  2       
+n1100                                                     NET DELAY                0.280                 12.134  2       
+pps_counter_55_add_4_15/CI1->pps_counter_55_add_4_15/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 12.412  2       
+n491                                                      NET DELAY                0.280                 12.692  2       
+pps_counter_55_add_4_17/CI0->pps_counter_55_add_4_17/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 12.970  2       
+n1103                                                     NET DELAY                0.280                 13.250  2       
+pps_counter_55_add_4_17/CI1->pps_counter_55_add_4_17/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 13.528  2       
+n493                                                      NET DELAY                0.280                 13.808  2       
+pps_counter_55_add_4_19/CI0->pps_counter_55_add_4_19/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 14.086  2       
+n1106                                                     NET DELAY                0.280                 14.366  2       
+pps_counter_55_add_4_19/CI1->pps_counter_55_add_4_19/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 14.644  2       
+n495                                                      NET DELAY                0.280                 14.924  2       
+pps_counter_55_add_4_21/CI0->pps_counter_55_add_4_21/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 15.202  2       
+n1109                                                     NET DELAY                0.280                 15.482  2       
+pps_counter_55_add_4_21/D1->pps_counter_55_add_4_21/S1
+                                          FA2             D1_TO_S1_DELAY           0.477                 15.959  1       
+n109[20]                                                  NET DELAY                2.075                 18.034  1       
+pps_counter_55__i20/D                                     ENDPOINT                 0.000                 18.034  1       
+
+
+Destination Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr      Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+                                                          CONSTRAINT               0.000                 26.041  1       
+CLK_IN                                    top             CLOCK LATENCY            0.000                 26.041  1       
+CLK_IN                                                    NET DELAY                0.000                 26.041  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY     0.510                 26.551  36      
+CLK_IN_c                                                  NET DELAY                2.075                 28.626  36      
+pps_counter_55__i20/CK                                    CLOCK PIN                0.000                 28.626  1       
+                                                          Uncertainty           -(0.000)                 28.626  
+                                                          Setup time            -(0.199)                 28.427  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+Required Time                                                                                            28.427  
+Arrival Time                                                                                          -(18.033)  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+Path Slack  (Passed)                                                                                     10.393  
+
+
+
+
+++++ Path 10 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+
+Path Begin       : pps_counter_55__i0/Q  (FD1P3XZ)
+Path End         : pps_counter_55__i19/D  (FD1P3XZ)
+Source Clock     : CLK_IN (R)
+Destination Clock: CLK_IN (R)
+Logic Level      : 21
+Delay Ratio      : 51.5% (route), 48.5% (logic)
+Clock Skew       : 0.000 ns 
+Setup Constraint : 26.041 ns 
+Path Slack       : 10.951 ns  (Passed)
+
+
+Source Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr      Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+CLK_IN                                    top             CLOCK LATENCY            0.000                  0.000  1       
+CLK_IN                                                    NET DELAY                0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY     0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY                2.075                  2.585  36      
+pps_counter_55__i0/CK                                     CLOCK PIN                0.000                  2.585  1       
+
+
+Data Path
+Name                                      Cell/Site Name  Delay Name            Incr      Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+pps_counter_55__i0/CK->pps_counter_55__i0/Q
+                                          FD1P3XZ         CK_TO_Q_DELAY            1.391                  3.976  2       
+pps_counter[0]                                            NET DELAY                0.280                  4.256  2       
+pps_counter_55_add_4_1/C1->pps_counter_55_add_4_1/CO1
+                                          FA2             C1_TO_CO1_DELAY          0.344                  4.600  2       
+n477                                                      NET DELAY                0.280                  4.880  2       
+pps_counter_55_add_4_3/CI0->pps_counter_55_add_4_3/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  5.158  2       
+n1082                                                     NET DELAY                0.280                  5.438  2       
+pps_counter_55_add_4_3/CI1->pps_counter_55_add_4_3/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                  5.716  2       
+n479                                                      NET DELAY                0.280                  5.996  2       
+pps_counter_55_add_4_5/CI0->pps_counter_55_add_4_5/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  6.274  2       
+n1085                                                     NET DELAY                0.280                  6.554  2       
+pps_counter_55_add_4_5/CI1->pps_counter_55_add_4_5/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                  6.832  2       
+n481                                                      NET DELAY                0.280                  7.112  2       
+pps_counter_55_add_4_7/CI0->pps_counter_55_add_4_7/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  7.390  2       
+n1088                                                     NET DELAY                0.280                  7.670  2       
+pps_counter_55_add_4_7/CI1->pps_counter_55_add_4_7/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                  7.948  2       
+n483                                                      NET DELAY                0.280                  8.228  2       
+pps_counter_55_add_4_9/CI0->pps_counter_55_add_4_9/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  8.506  2       
+n1091                                                     NET DELAY                0.280                  8.786  2       
+pps_counter_55_add_4_9/CI1->pps_counter_55_add_4_9/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                  9.064  2       
+n485                                                      NET DELAY                0.280                  9.344  2       
+pps_counter_55_add_4_11/CI0->pps_counter_55_add_4_11/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                  9.622  2       
+n1094                                                     NET DELAY                0.280                  9.902  2       
+pps_counter_55_add_4_11/CI1->pps_counter_55_add_4_11/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 10.180  2       
+n487                                                      NET DELAY                0.280                 10.460  2       
+pps_counter_55_add_4_13/CI0->pps_counter_55_add_4_13/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 10.738  2       
+n1097                                                     NET DELAY                0.280                 11.018  2       
+pps_counter_55_add_4_13/CI1->pps_counter_55_add_4_13/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 11.296  2       
+n489                                                      NET DELAY                0.280                 11.576  2       
+pps_counter_55_add_4_15/CI0->pps_counter_55_add_4_15/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 11.854  2       
+n1100                                                     NET DELAY                0.280                 12.134  2       
+pps_counter_55_add_4_15/CI1->pps_counter_55_add_4_15/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 12.412  2       
+n491                                                      NET DELAY                0.280                 12.692  2       
+pps_counter_55_add_4_17/CI0->pps_counter_55_add_4_17/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 12.970  2       
+n1103                                                     NET DELAY                0.280                 13.250  2       
+pps_counter_55_add_4_17/CI1->pps_counter_55_add_4_17/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 13.528  2       
+n493                                                      NET DELAY                0.280                 13.808  2       
+pps_counter_55_add_4_19/CI0->pps_counter_55_add_4_19/CO0
+                                          FA2             CI0_TO_CO0_DELAY         0.278                 14.086  2       
+n1106                                                     NET DELAY                0.280                 14.366  2       
+pps_counter_55_add_4_19/CI1->pps_counter_55_add_4_19/CO1
+                                          FA2             CI1_TO_CO1_DELAY         0.278                 14.644  2       
+n495                                                      NET DELAY                0.280                 14.924  2       
+pps_counter_55_add_4_21/D0->pps_counter_55_add_4_21/S0
+                                          FA2             D0_TO_S0_DELAY           0.477                 15.401  1       
+n109[19]                                                  NET DELAY                2.075                 17.476  1       
+pps_counter_55__i19/D                                     ENDPOINT                 0.000                 17.476  1       
+
+
+Destination Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr      Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+                                                          CONSTRAINT               0.000                 26.041  1       
+CLK_IN                                    top             CLOCK LATENCY            0.000                 26.041  1       
+CLK_IN                                                    NET DELAY                0.000                 26.041  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY     0.510                 26.551  36      
+CLK_IN_c                                                  NET DELAY                2.075                 28.626  36      
+pps_counter_55__i19/CK                                    CLOCK PIN                0.000                 28.626  1       
+                                                          Uncertainty           -(0.000)                 28.626  
+                                                          Setup time            -(0.199)                 28.427  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+Required Time                                                                                            28.427  
+Arrival Time                                                                                          -(17.475)  
+----------------------------------------  --------------  --------------------  --------  ---------------------  ------  
+Path Slack  (Passed)                                                                                     10.951  
+
+
+
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+                    End of Detailed Report for timing paths 
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+
+
+##########################################################
+
+
+
+===============================================================
+3  Hold at Speed Grade M Corner at -40 Degrees
+===============================================================
+
+3.1  Endpoint slacks
+=======================
+-------------------------------------------------------
+          Listing 10 End Points          |    Slack    
+-------------------------------------------------------
+g_clk_sdr.clk_iol/DO0                    |    1.671 ns 
+enable_sync_i1/D                         |    2.958 ns 
+sync_iol/DO0                             |    3.466 ns 
+pps_iol/DO0                              |    3.466 ns 
+pps_counter_55__i22/D                    |    4.196 ns 
+g_clk_sdr.clk_toggle_c/D                 |    4.196 ns 
+pps_counter_55__i23/D                    |    4.196 ns 
+pps_counter_55__i24/D                    |    4.196 ns 
+pps_counter_55__i25/D                    |    4.196 ns 
+pps_counter_55__i0/D                     |    4.196 ns 
+-------------------------------------------------------
+                                         |             
+Hold # of endpoints with negative slack: |           0 
+                                         |             
+-------------------------------------------------------
+
+3.2  Detailed Report
+=======================
+
+
+XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+Detail report of critical paths
+
+XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+                    Detailed Report for timing paths 
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+
+++++ Path 1 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+
+Path Begin       : g_clk_sdr.clk_toggle_c/Q  (FD1P3XZ)
+Path End         : g_clk_sdr.clk_iol/DO0  (IOL_B)
+Source Clock     : CLK_IN (R)
+Destination Clock: CLK_IN (R)
+Logic Level      : 1
+Delay Ratio      : 16.8% (route), 83.2% (logic)
+Clock Skew       : 0.000 ns 
+Hold Constraint  : 0.000 ns 
+Path Slack       : 1.671 ns  (Passed)
+
+
+Source Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+CLK_IN                                    top             CLOCK LATENCY         0.000                  0.000  1       
+CLK_IN                                                    NET DELAY             0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY  0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY             2.075                  2.585  36      
+g_clk_sdr.clk_toggle_c/CK                                 CLOCK PIN             0.000                  2.585  1       
+
+
+Data Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+g_clk_sdr.clk_toggle_c/CK->g_clk_sdr.clk_toggle_c/Q
+                                          FD1P3XZ         CK_TO_Q_DELAY         1.391                  3.976  2       
+g_clk_sdr.clk_toggle                                      NET DELAY             0.280                  4.256  2       
+g_clk_sdr.clk_iol/DO0                                     ENDPOINT              0.000                  4.256  1       
+
+
+Destination Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+                                                          CONSTRAINT            0.000                  0.000  1       
+CLK_IN                                    top             CLOCK LATENCY         0.000                  0.000  1       
+CLK_IN                                                    NET DELAY             0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY  0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY             2.075                  2.585  36      
+g_clk_sdr.clk_iol/OUTCLK                                  CLOCK PIN             0.000                  2.585  1       
+                                                          Uncertainty           0.000                  2.585  
+                                                          Hold time             0.000                  2.585  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+Required Time                                                                                         -2.585  
+Arrival Time                                                                                           4.256  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+Path Slack  (Passed)                                                                                   1.671  
+
+
+
+
+++++ Path 2 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+
+Path Begin       : enable_sync_i0/DI0  (IOL_B)
+Path End         : enable_sync_i1/D  (FD1P3XZ)
+Source Clock     : CLK_IN (R)
+Destination Clock: CLK_IN (R)
+Logic Level      : 1
+Delay Ratio      : 70.1% (route), 29.9% (logic)
+Clock Skew       : 0.000 ns 
+Hold Constraint  : 0.000 ns 
+Path Slack       : 2.958 ns  (Passed)
+
+
+Source Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+CLK_IN                                    top             CLOCK LATENCY         0.000                  0.000  1       
+CLK_IN                                                    NET DELAY             0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY  0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY             2.075                  2.585  36      
+enable_sync_i0/INCLK                                      CLOCK PIN             0.000                  2.585  1       
+
+
+Data Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+enable_sync_i0/INCLK->enable_sync_i0/DI0  IOL_B           INCLK_TO_DI0_DELAY    0.883                  3.468  1       
+enable_sync[0]                                            NET DELAY             2.075                  5.543  1       
+enable_sync_i1/D                                          ENDPOINT              0.000                  5.543  1       
+
+
+Destination Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+                                                          CONSTRAINT            0.000                  0.000  1       
+CLK_IN                                    top             CLOCK LATENCY         0.000                  0.000  1       
+CLK_IN                                                    NET DELAY             0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY  0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY             2.075                  2.585  36      
+enable_sync_i1/CK                                         CLOCK PIN             0.000                  2.585  1       
+                                                          Uncertainty           0.000                  2.585  
+                                                          Hold time             0.000                  2.585  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+Required Time                                                                                         -2.585  
+Arrival Time                                                                                           5.543  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+Path Slack  (Passed)                                                                                   2.958  
+
+
+
+
+++++ Path 3 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+
+Path Begin       : sync_reg_c/Q  (FD1P3XZ)
+Path End         : sync_iol/DO0  (IOL_B)
+Source Clock     : CLK_IN (R)
+Destination Clock: CLK_IN (R)
+Logic Level      : 1
+Delay Ratio      : 59.9% (route), 40.1% (logic)
+Clock Skew       : 0.000 ns 
+Hold Constraint  : 0.000 ns 
+Path Slack       : 3.466 ns  (Passed)
+
+
+Source Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+CLK_IN                                    top             CLOCK LATENCY         0.000                  0.000  1       
+CLK_IN                                                    NET DELAY             0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY  0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY             2.075                  2.585  36      
+sync_reg_c/CK                                             CLOCK PIN             0.000                  2.585  1       
+
+
+Data Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+sync_reg_c/CK->sync_reg_c/Q               FD1P3XZ         CK_TO_Q_DELAY         1.391                  3.976  1       
+sync_reg                                                  NET DELAY             2.075                  6.051  1       
+sync_iol/DO0                                              ENDPOINT              0.000                  6.051  1       
+
+
+Destination Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+                                                          CONSTRAINT            0.000                  0.000  1       
+CLK_IN                                    top             CLOCK LATENCY         0.000                  0.000  1       
+CLK_IN                                                    NET DELAY             0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY  0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY             2.075                  2.585  36      
+sync_iol/OUTCLK                                           CLOCK PIN             0.000                  2.585  1       
+                                                          Uncertainty           0.000                  2.585  
+                                                          Hold time             0.000                  2.585  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+Required Time                                                                                         -2.585  
+Arrival Time                                                                                           6.051  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+Path Slack  (Passed)                                                                                   3.466  
+
+
+
+
+++++ Path 4 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+
+Path Begin       : pps_reg_c/Q  (FD1P3XZ)
+Path End         : pps_iol/DO0  (IOL_B)
+Source Clock     : CLK_IN (R)
+Destination Clock: CLK_IN (R)
+Logic Level      : 1
+Delay Ratio      : 59.9% (route), 40.1% (logic)
+Clock Skew       : 0.000 ns 
+Hold Constraint  : 0.000 ns 
+Path Slack       : 3.466 ns  (Passed)
+
+
+Source Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+CLK_IN                                    top             CLOCK LATENCY         0.000                  0.000  1       
+CLK_IN                                                    NET DELAY             0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY  0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY             2.075                  2.585  36      
+pps_reg_c/CK                                              CLOCK PIN             0.000                  2.585  1       
+
+
+Data Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+pps_reg_c/CK->pps_reg_c/Q                 FD1P3XZ         CK_TO_Q_DELAY         1.391                  3.976  1       
+pps_reg                                                   NET DELAY             2.075                  6.051  1       
+pps_iol/DO0                                               ENDPOINT              0.000                  6.051  1       
+
+
+Destination Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+                                                          CONSTRAINT            0.000                  0.000  1       
+CLK_IN                                    top             CLOCK LATENCY         0.000                  0.000  1       
+CLK_IN                                                    NET DELAY             0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY  0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY             2.075                  2.585  36      
+pps_iol/OUTCLK                                            CLOCK PIN             0.000                  2.585  1       
+                                                          Uncertainty           0.000                  2.585  
+                                                          Hold time             0.000                  2.585  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+Required Time                                                                                         -2.585  
+Arrival Time                                                                                           6.051  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+Path Slack  (Passed)                                                                                   3.466  
+
+
+
+
+++++ Path 5 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+
+Path Begin       : pps_counter_55__i22/Q  (FD1P3XZ)
+Path End         : pps_counter_55__i22/D  (FD1P3XZ)
+Source Clock     : CLK_IN (R)
+Destination Clock: CLK_IN (R)
+Logic Level      : 2
+Delay Ratio      : 56.1% (route), 43.9% (logic)
+Clock Skew       : 0.000 ns 
+Hold Constraint  : 0.000 ns 
+Path Slack       : 4.196 ns  (Passed)
+
+
+Source Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+CLK_IN                                    top             CLOCK LATENCY         0.000                  0.000  1       
+CLK_IN                                                    NET DELAY             0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY  0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY             2.075                  2.585  36      
+pps_counter_55__i22/CK                                    CLOCK PIN             0.000                  2.585  1       
+
+
+Data Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+pps_counter_55__i22/CK->pps_counter_55__i22/Q
+                                          FD1P3XZ         CK_TO_Q_DELAY         1.391                  3.976  3       
+pps_counter[22]                                           NET DELAY             0.280                  4.256  3       
+pps_counter_55_add_4_23/C1->pps_counter_55_add_4_23/S1
+                                          FA2             C1_TO_S1_DELAY        0.450                  4.706  1       
+n109[22]                                                  NET DELAY             2.075                  6.781  1       
+pps_counter_55__i22/D                                     ENDPOINT              0.000                  6.781  1       
+
+
+Destination Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+                                                          CONSTRAINT            0.000                  0.000  1       
+CLK_IN                                    top             CLOCK LATENCY         0.000                  0.000  1       
+CLK_IN                                                    NET DELAY             0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY  0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY             2.075                  2.585  36      
+pps_counter_55__i22/CK                                    CLOCK PIN             0.000                  2.585  1       
+                                                          Uncertainty           0.000                  2.585  
+                                                          Hold time             0.000                  2.585  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+Required Time                                                                                         -2.585  
+Arrival Time                                                                                           6.781  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+Path Slack  (Passed)                                                                                   4.196  
+
+
+
+
+++++ Path 6 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+
+Path Begin       : g_clk_sdr.clk_toggle_c/Q  (FD1P3XZ)
+Path End         : g_clk_sdr.clk_toggle_c/D  (FD1P3XZ)
+Source Clock     : CLK_IN (R)
+Destination Clock: CLK_IN (R)
+Logic Level      : 2
+Delay Ratio      : 56.1% (route), 43.9% (logic)
+Clock Skew       : 0.000 ns 
+Hold Constraint  : 0.000 ns 
+Path Slack       : 4.196 ns  (Passed)
+
+
+Source Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+CLK_IN                                    top             CLOCK LATENCY         0.000                  0.000  1       
+CLK_IN                                                    NET DELAY             0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY  0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY             2.075                  2.585  36      
+g_clk_sdr.clk_toggle_c/CK                                 CLOCK PIN             0.000                  2.585  1       
+
+
+Data Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+g_clk_sdr.clk_toggle_c/CK->g_clk_sdr.clk_toggle_c/Q
+                                          FD1P3XZ         CK_TO_Q_DELAY         1.391                  3.976  2       
+g_clk_sdr.clk_toggle                                      NET DELAY             0.280                  4.256  2       
+i34_1_lut/A->i34_1_lut/Z                  LUT4            A_TO_Z_DELAY          0.450                  4.706  1       
+g_clk_sdr.clk_toggle_N_31                                 NET DELAY             2.075                  6.781  1       
+g_clk_sdr.clk_toggle_c/D                                  ENDPOINT              0.000                  6.781  1       
+
+
+Destination Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+                                                          CONSTRAINT            0.000                  0.000  1       
+CLK_IN                                    top             CLOCK LATENCY         0.000                  0.000  1       
+CLK_IN                                                    NET DELAY             0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY  0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY             2.075                  2.585  36      
+g_clk_sdr.clk_toggle_c/CK                                 CLOCK PIN             0.000                  2.585  1       
+                                                          Uncertainty           0.000                  2.585  
+                                                          Hold time             0.000                  2.585  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+Required Time                                                                                         -2.585  
+Arrival Time                                                                                           6.781  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+Path Slack  (Passed)                                                                                   4.196  
+
+
+
+
+++++ Path 7 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+
+Path Begin       : pps_counter_55__i23/Q  (FD1P3XZ)
+Path End         : pps_counter_55__i23/D  (FD1P3XZ)
+Source Clock     : CLK_IN (R)
+Destination Clock: CLK_IN (R)
+Logic Level      : 2
+Delay Ratio      : 56.1% (route), 43.9% (logic)
+Clock Skew       : 0.000 ns 
+Hold Constraint  : 0.000 ns 
+Path Slack       : 4.196 ns  (Passed)
+
+
+Source Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+CLK_IN                                    top             CLOCK LATENCY         0.000                  0.000  1       
+CLK_IN                                                    NET DELAY             0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY  0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY             2.075                  2.585  36      
+pps_counter_55__i23/CK                                    CLOCK PIN             0.000                  2.585  1       
+
+
+Data Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+pps_counter_55__i23/CK->pps_counter_55__i23/Q
+                                          FD1P3XZ         CK_TO_Q_DELAY         1.391                  3.976  3       
+pps_counter[23]                                           NET DELAY             0.280                  4.256  3       
+pps_counter_55_add_4_25/C0->pps_counter_55_add_4_25/S0
+                                          FA2             C0_TO_S0_DELAY        0.450                  4.706  1       
+n109[23]                                                  NET DELAY             2.075                  6.781  1       
+pps_counter_55__i23/D                                     ENDPOINT              0.000                  6.781  1       
+
+
+Destination Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+                                                          CONSTRAINT            0.000                  0.000  1       
+CLK_IN                                    top             CLOCK LATENCY         0.000                  0.000  1       
+CLK_IN                                                    NET DELAY             0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY  0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY             2.075                  2.585  36      
+pps_counter_55__i23/CK                                    CLOCK PIN             0.000                  2.585  1       
+                                                          Uncertainty           0.000                  2.585  
+                                                          Hold time             0.000                  2.585  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+Required Time                                                                                         -2.585  
+Arrival Time                                                                                           6.781  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+Path Slack  (Passed)                                                                                   4.196  
+
+
+
+
+++++ Path 8 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+
+Path Begin       : pps_counter_55__i24/Q  (FD1P3XZ)
+Path End         : pps_counter_55__i24/D  (FD1P3XZ)
+Source Clock     : CLK_IN (R)
+Destination Clock: CLK_IN (R)
+Logic Level      : 2
+Delay Ratio      : 56.1% (route), 43.9% (logic)
+Clock Skew       : 0.000 ns 
+Hold Constraint  : 0.000 ns 
+Path Slack       : 4.196 ns  (Passed)
+
+
+Source Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+CLK_IN                                    top             CLOCK LATENCY         0.000                  0.000  1       
+CLK_IN                                                    NET DELAY             0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY  0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY             2.075                  2.585  36      
+pps_counter_55__i24/CK                                    CLOCK PIN             0.000                  2.585  1       
+
+
+Data Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+pps_counter_55__i24/CK->pps_counter_55__i24/Q
+                                          FD1P3XZ         CK_TO_Q_DELAY         1.391                  3.976  3       
+pps_counter[24]                                           NET DELAY             0.280                  4.256  3       
+pps_counter_55_add_4_25/C1->pps_counter_55_add_4_25/S1
+                                          FA2             C1_TO_S1_DELAY        0.450                  4.706  1       
+n109[24]                                                  NET DELAY             2.075                  6.781  1       
+pps_counter_55__i24/D                                     ENDPOINT              0.000                  6.781  1       
+
+
+Destination Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+                                                          CONSTRAINT            0.000                  0.000  1       
+CLK_IN                                    top             CLOCK LATENCY         0.000                  0.000  1       
+CLK_IN                                                    NET DELAY             0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY  0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY             2.075                  2.585  36      
+pps_counter_55__i24/CK                                    CLOCK PIN             0.000                  2.585  1       
+                                                          Uncertainty           0.000                  2.585  
+                                                          Hold time             0.000                  2.585  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+Required Time                                                                                         -2.585  
+Arrival Time                                                                                           6.781  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+Path Slack  (Passed)                                                                                   4.196  
+
+
+
+
+++++ Path 9 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+
+Path Begin       : pps_counter_55__i25/Q  (FD1P3XZ)
+Path End         : pps_counter_55__i25/D  (FD1P3XZ)
+Source Clock     : CLK_IN (R)
+Destination Clock: CLK_IN (R)
+Logic Level      : 2
+Delay Ratio      : 56.1% (route), 43.9% (logic)
+Clock Skew       : 0.000 ns 
+Hold Constraint  : 0.000 ns 
+Path Slack       : 4.196 ns  (Passed)
+
+
+Source Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+CLK_IN                                    top             CLOCK LATENCY         0.000                  0.000  1       
+CLK_IN                                                    NET DELAY             0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY  0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY             2.075                  2.585  36      
+pps_counter_55__i25/CK                                    CLOCK PIN             0.000                  2.585  1       
+
+
+Data Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+pps_counter_55__i25/CK->pps_counter_55__i25/Q
+                                          FD1P3XZ         CK_TO_Q_DELAY         1.391                  3.976  3       
+pps_counter[25]                                           NET DELAY             0.280                  4.256  3       
+pps_counter_55_add_4_27/C0->pps_counter_55_add_4_27/S0
+                                          FA2             C0_TO_S0_DELAY        0.450                  4.706  1       
+n109[25]                                                  NET DELAY             2.075                  6.781  1       
+pps_counter_55__i25/D                                     ENDPOINT              0.000                  6.781  1       
+
+
+Destination Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+                                                          CONSTRAINT            0.000                  0.000  1       
+CLK_IN                                    top             CLOCK LATENCY         0.000                  0.000  1       
+CLK_IN                                                    NET DELAY             0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY  0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY             2.075                  2.585  36      
+pps_counter_55__i25/CK                                    CLOCK PIN             0.000                  2.585  1       
+                                                          Uncertainty           0.000                  2.585  
+                                                          Hold time             0.000                  2.585  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+Required Time                                                                                         -2.585  
+Arrival Time                                                                                           6.781  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+Path Slack  (Passed)                                                                                   4.196  
+
+
+
+
+++++ Path 10 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+
+Path Begin       : pps_counter_55__i0/Q  (FD1P3XZ)
+Path End         : pps_counter_55__i0/D  (FD1P3XZ)
+Source Clock     : CLK_IN (R)
+Destination Clock: CLK_IN (R)
+Logic Level      : 2
+Delay Ratio      : 56.1% (route), 43.9% (logic)
+Clock Skew       : 0.000 ns 
+Hold Constraint  : 0.000 ns 
+Path Slack       : 4.196 ns  (Passed)
+
+
+Source Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+CLK_IN                                    top             CLOCK LATENCY         0.000                  0.000  1       
+CLK_IN                                                    NET DELAY             0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY  0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY             2.075                  2.585  36      
+pps_counter_55__i0/CK                                     CLOCK PIN             0.000                  2.585  1       
+
+
+Data Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+pps_counter_55__i0/CK->pps_counter_55__i0/Q
+                                          FD1P3XZ         CK_TO_Q_DELAY         1.391                  3.976  2       
+pps_counter[0]                                            NET DELAY             0.280                  4.256  2       
+pps_counter_55_add_4_1/C1->pps_counter_55_add_4_1/S1
+                                          FA2             C1_TO_S1_DELAY        0.450                  4.706  1       
+n109[0]                                                   NET DELAY             2.075                  6.781  1       
+pps_counter_55__i0/D                                      ENDPOINT              0.000                  6.781  1       
+
+
+Destination Clock Path
+Name                                      Cell/Site Name  Delay Name            Incr   Arrival/Required Time  Fanout  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+                                                          CONSTRAINT            0.000                  0.000  1       
+CLK_IN                                    top             CLOCK LATENCY         0.000                  0.000  1       
+CLK_IN                                                    NET DELAY             0.000                  0.000  1       
+CLK_IN_pad.bb_inst/B->CLK_IN_pad.bb_inst/O
+                                          BB_B            IOPAD_TO_PADDI_DELAY  0.510                  0.510  36      
+CLK_IN_c                                                  NET DELAY             2.075                  2.585  36      
+pps_counter_55__i0/CK                                     CLOCK PIN             0.000                  2.585  1       
+                                                          Uncertainty           0.000                  2.585  
+                                                          Hold time             0.000                  2.585  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+Required Time                                                                                         -2.585  
+Arrival Time                                                                                           6.781  
+----------------------------------------  --------------  --------------------  -----  ---------------------  ------  
+Path Slack  (Passed)                                                                                   4.196  
+
+
+
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+                    End of Detailed Report for timing paths 
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
+
+
+##########################################################
+
+
+

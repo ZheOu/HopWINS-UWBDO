@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <BaliMessageLog>
+    <Task name="PAR">
+        <Message>
+            <ID>70009502</ID>
+            <Severity>16</Severity>
+            <Dynamic>IO ports are not constrained.</Dynamic>
+        </Message>
+    </Task>
     <Task name="Synthesis">
         <Message>
             <ID>35831038</ID>
@@ -769,10 +776,10 @@
         <Message>
             <ID>35901018</ID>
             <Severity>1</Severity>
-            <Dynamic>C:/Users/zhang/my_designs/test/source/impl_1/top.v(30): </Dynamic>
+            <Dynamic>C:/Users/zhang/OneDrive/Desktop/UWBDO/HopWINS-UWBDO/FPGA/source/impl_1/top.v(37): </Dynamic>
             <Dynamic>top</Dynamic>
-            <Navigation>C:/Users/zhang/my_designs/test/source/impl_1/top.v</Navigation>
-            <Navigation>30</Navigation>
+            <Navigation>C:/Users/zhang/OneDrive/Desktop/UWBDO/HopWINS-UWBDO/FPGA/source/impl_1/top.v</Navigation>
+            <Navigation>37</Navigation>
         </Message>
         <Message>
             <ID>35001797</ID>
@@ -781,30 +788,54 @@
         <Message>
             <ID>35901018</ID>
             <Severity>1</Severity>
-            <Dynamic>../source/impl_1/top.v(30): </Dynamic>
+            <Dynamic>../source/impl_1/top.v(37): </Dynamic>
             <Dynamic>top</Dynamic>
             <Navigation>../source/impl_1/top.v</Navigation>
-            <Navigation>30</Navigation>
+            <Navigation>37</Navigation>
         </Message>
         <Message>
-            <ID>35002028</ID>
-            <Severity>256</Severity>
-            <Dynamic>FPGA_CLKIN</Dynamic>
+            <ID>35001263</ID>
+            <Severity>16</Severity>
+            <Dynamic>PPS</Dynamic>
         </Message>
         <Message>
-            <ID>35002028</ID>
-            <Severity>256</Severity>
-            <Dynamic>FPGA_CLKOUT</Dynamic>
+            <ID>35001263</ID>
+            <Severity>16</Severity>
+            <Dynamic>SYNC</Dynamic>
         </Message>
         <Message>
-            <ID>35002028</ID>
-            <Severity>256</Severity>
-            <Dynamic>FPGA_CLKIN</Dynamic>
+            <ID>35001263</ID>
+            <Severity>16</Severity>
+            <Dynamic>CLK</Dynamic>
         </Message>
         <Message>
-            <ID>35002028</ID>
-            <Severity>256</Severity>
-            <Dynamic>FPGA_CLKOUT</Dynamic>
+            <ID>35002062</ID>
+            <Severity>16</Severity>
+            <Dynamic>CLK_IN</Dynamic>
+        </Message>
+        <Message>
+            <ID>35002061</ID>
+            <Severity>1</Severity>
+            <Dynamic>FPGA_EN</Dynamic>
+        </Message>
+        <Message>
+            <ID>35002062</ID>
+            <Severity>16</Severity>
+            <Dynamic>CLK</Dynamic>
+        </Message>
+        <Message>
+            <ID>35002062</ID>
+            <Severity>16</Severity>
+            <Dynamic>SYNC</Dynamic>
+        </Message>
+        <Message>
+            <ID>35002062</ID>
+            <Severity>16</Severity>
+            <Dynamic>PPS</Dynamic>
+        </Message>
+        <Message>
+            <ID>35002039</ID>
+            <Severity>1</Severity>
         </Message>
     </Task>
 </BaliMessageLog>
