@@ -14,7 +14,8 @@
             "name": "Debug",
             "inherits": "default",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug"
+                "CMAKE_BUILD_TYPE": "Debug",
+                "HOPWINS_ENABLE_BOOT_UWB_CLOCK_DIAGNOSTIC": true
             }
         },
         {

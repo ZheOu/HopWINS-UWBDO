@@ -15,6 +15,7 @@ extern SPI_HandleTypeDef hspi1;
 extern I2C_HandleTypeDef hi2c2;
 extern UART_HandleTypeDef huart1;
 extern TIM_HandleTypeDef htim2;
+extern CRC_HandleTypeDef hcrc;
 
 static int32_t board_uwb_hardware_reset(void);
 static int32_t board_uwb_spi_set_slow_rate(void);
@@ -412,6 +413,22 @@ board_status_t board_pc_receive(uint8_t *data, size_t len)
       data,
       data_len,
       s_board.pc_uart.timeout_ms));
+}
+
+board_status_t board_crc32_calculate(
+    const uint8_t *data,
+    size_t len,
+    uint32_t *crc)
+{
+  if ((data == NULL) || (len == 0U) || (len > UINT32_MAX) || (crc == NULL)) {
+    return BOARD_BAD_ARG;
+  }
+
+  *crc = HAL_CRC_Calculate(
+      &hcrc,
+      (uint32_t *)(void *)data,
+      (uint32_t)len) ^ UINT32_C(0xFFFFFFFF);
+  return BOARD_OK;
 }
 
 board_status_t board_external_clock_counter_start(void)

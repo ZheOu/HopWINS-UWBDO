@@ -156,6 +156,10 @@ board_status_t board_i2c_mem_read_7bit(
 
 board_status_t board_pc_transmit(const uint8_t *data, size_t len);
 board_status_t board_pc_receive(uint8_t *data, size_t len);
+board_status_t board_crc32_calculate(
+    const uint8_t *data,
+    size_t len,
+    uint32_t *crc);
 
 board_status_t board_external_clock_counter_start(void);
 board_status_t board_external_clock_counter_stop(void);
