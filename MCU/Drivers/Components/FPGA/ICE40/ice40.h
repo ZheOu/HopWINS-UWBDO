@@ -11,21 +11,37 @@
   * rising edge of SPI_SCK, so the bus must run in SPI mode 0 or mode 3, MSB
   * first, at 1 MHz to 25 MHz.
   *
-  * Wiring on HopWINS-UWBDO-PCB-STDWDO (iCE40UP5K-SG48I, from Schematic.pdf):
+  * Signals used, named as in HopWINS-UWBDO.ioc / main.h:
   *
-  *   iCE40 pin            net            STM32U585 pin
-  *   -------------------- -------------- ---------------------
-  *   7  CDONE             FPGA_DONE      PC14   (GPIO input)
-  *   8  CRESET_B          FPGA_RST       PH0    (GPIO output)
-  *   14 IOB_32a_SPI_SO    FPGA_SPIMISO   PA6    (SPI1_MISO)
-  *   15 IOB_34a_SPI_SCK   FPGA_SPICLK    PA5    (SPI1_SCK)
-  *   16 IOB_35b_SPI_SS    FPGA_SPICS     PA4    (GPIO output)
-  *   17 IOB_33b_SPI_SI    FPGA_SPIMOSI   PA7    (SPI1_MOSI)
+  *   iCE40 function  MCU pin macro       configured as
+  *   --------------- ------------------- ------------------------------
+  *   CRESET_B        GPIO_FPGARST_Pin    open drain, pull-up
+  *   CDONE           GPIO_FPGADONE_Pin   input, pull-up
+  *   SPI_SS          SPI1_CSFPGA_Pin     push-pull output
+  *   SPI_SCK/SI/SO   SPI1 alternate function pins
   *
-  * SPI1 is shared with the DW3000, which has its own chip select on PA3, so
-  * SPI_SS must be the only select asserted for the whole sequence. Bank 1 of
-  * the FPGA (SPI_VCCIO1, pin 22) and the MCU both run from the 1V8 rail, so
-  * the bus is a direct connection with no level shifting.
+  * Both CRESET_B and CDONE are open drain against a pull-up, so every edge on
+  * them is an RC ramp rather than a driven transition. Anything this driver
+  * decides on has a settling delay in front of it for that reason.
+  *
+  * GPIO_FPGAEN_Pin takes no part in configuration; it is the MCU-to-FPGA link
+  * the configured design uses afterwards, and this driver never touches it.
+  *
+  * SPI1 is shared with the DW3000, which has its own chip select, so SPI_SS
+  * must be the only select asserted for the whole sequence.
+  *
+  * Required order (FPGA-TN-02001 13.2). Releasing CRESET_B while SPI_SS is High
+  * brings the device up as an SPI master instead, hunting for a boot Flash this
+  * board does not have, and CDONE then never rises:
+  *
+  *   1. SPI_SS Low
+  *   2. CRESET_B Low, held at least 200 ns    <- CDONE goes Low here
+  *   3. CRESET_B released High, SPI_SS STILL LOW  <- latches slave mode
+  *   4. wait at least 1200 us for the configuration memory to clear
+  *   5. SPI_SS High, 8 dummy clocks
+  *   6. SPI_SS Low, whole image MSB first, no chip-select glitch
+  *   7. SPI_SS High, clock until CDONE rises (about 100 SPI_SCK cycles)
+  *   8. at least 49 further clocks to release the user I/O
   *
   * The MCU build embeds the configuration binary in the FPGA_IMAGE linker
   * region at 0x081E0000 (128 KB). The linker exports
@@ -57,8 +73,12 @@ typedef enum {
   ICE40_STATUS_BAD_ARG = -1,
   ICE40_STATUS_BAD_IMAGE = -2,
   ICE40_STATUS_SPI_ERROR = -3,
+  /** CDONE never rose, and it was already High while CRESET_B was asserted. */
   ICE40_STATUS_CDONE_STUCK_HIGH = -4,
+  /** CDONE never rose, having correctly been Low while CRESET_B was asserted. */
   ICE40_STATUS_CDONE_TIMEOUT = -5,
+  /** CDONE rose but fell again, which is how a failed internal CRC shows up. */
+  ICE40_STATUS_CDONE_DROPPED = -6,
 } ice40_status_t;
 
 /**
@@ -96,6 +116,14 @@ typedef struct ice40_device {
   uint32_t image_len;
   uint32_t sync_offset;  /**< Offset of the 0x7EAA997E synchronisation word. */
   uint32_t cdone_clocks; /**< SPI_SCK cycles sent after the image until CDONE. */
+  uint32_t attempts;     /**< Sequences run, including the one that succeeded. */
+  /**
+    * CDONE sampled while CRESET_B was still asserted on the last attempt. A
+    * live device holds it Low there; High means CRESET_B or CDONE is not
+    * reaching the FPGA. Recorded rather than aborting, so the sequence still
+    * runs and the real failure mode stays visible.
+    */
+  bool cdone_at_reset;
 } ice40_device_t;
 
 /**
@@ -121,15 +149,29 @@ ice40_status_t ice40_image_from_flash(
     ice40_image_t *image);
 
 /**
-  * @brief Run the full SPI slave configuration sequence.
+  * @brief Run the SPI slave configuration sequence once.
   *
   * On success the FPGA is in user mode and the SPI bus is free for other
-  * peripherals again.
+  * peripherals again. On failure the device is parked with CRESET_B asserted
+  * and SPI_SS released, which is the state a retry starts from.
   */
 ice40_status_t ice40_configure(
     ice40_device_t *device,
     const ice40_platform_t *platform,
     const ice40_image_t *image);
+
+/**
+  * @brief Retry the sequence until CDONE rises or the attempts run out.
+  *
+  * Faults a retry cannot clear, a rejected image or a bad argument, return
+  * immediately. @p max_attempts is clamped to at least one, and the count
+  * actually used is left in device->attempts.
+  */
+ice40_status_t ice40_configure_retry(
+    ice40_device_t *device,
+    const ice40_platform_t *platform,
+    const ice40_image_t *image,
+    uint32_t max_attempts);
 
 bool ice40_is_configured(const ice40_device_t *device);
 

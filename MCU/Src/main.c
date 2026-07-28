@@ -133,6 +133,13 @@ static uint32_t APP_CalculateCrc32(const uint8_t *data, size_t data_len)
   (void)board_pc_transmit((const uint8_t *)(literal), sizeof(literal) - 1U)
 
 /*
+ * Each attempt reruns the whole sequence at about 72 ms, so this spends a fifth
+ * of a second of boot time to ride out a marginal SPI or power-up glitch. A
+ * real wiring fault fails all of them, and ATTEMPTS in the report says which.
+ */
+#define APP_FPGA_MAX_ATTEMPTS 3U
+
+/*
  * Progress is printed as it happens rather than only at the end: sending the
  * image blocks for about 70 ms, so if the sequence stalls the last line on the
  * terminal says which step it stalled in.
@@ -163,10 +170,11 @@ static void APP_ConfigureFpga(void)
 
   APP_PRINT("FPGA: sending bitstream over SPI1 at 12 MHz\r\n");
 
-  g_ice40_status = ice40_configure(
+  g_ice40_status = ice40_configure_retry(
       &g_ice40,
       board_fpga_get_platform(),
-      &g_ice40_image);
+      &g_ice40_image,
+      APP_FPGA_MAX_ATTEMPTS);
 
   APP_ReportFpgaResult();
 
@@ -174,9 +182,21 @@ static void APP_ConfigureFpga(void)
   {
     APP_PRINT("FPGA: CDONE high, device is in user mode\r\n");
   }
+  else if (g_ice40_status == ICE40_STATUS_CDONE_STUCK_HIGH)
+  {
+    APP_PRINT("FPGA: CDONE never went low in reset, CRESET_B/CDONE wiring\r\n");
+  }
+  else if (g_ice40_status == ICE40_STATUS_CDONE_TIMEOUT)
+  {
+    APP_PRINT("FPGA: reset seen but CDONE never rose, image not accepted\r\n");
+  }
+  else if (g_ice40_status == ICE40_STATUS_CDONE_DROPPED)
+  {
+    APP_PRINT("FPGA: CDONE rose then fell, internal CRC check failed\r\n");
+  }
   else
   {
-    APP_PRINT("FPGA: CDONE low, configuration failed\r\n");
+    APP_PRINT("FPGA: configuration failed\r\n");
   }
 }
 
@@ -242,6 +262,8 @@ static void APP_ReportFpgaResult(void)
   static const uint8_t ok_text[] = "FPGA CONFIG OK";
   static const uint8_t error_text[] = "FPGA CONFIG ERROR";
   static const uint8_t status_text[] = ", STATUS=0x";
+  static const uint8_t attempts_text[] = ", ATTEMPTS=";
+  static const uint8_t at_reset_text[] = ", CDONE_AT_RST=";
   static const uint8_t cdone_clocks_text[] = ", CDONE_CLK=0x";
   static const uint8_t cdone_text[] = ", CDONE=";
   static const uint8_t crc_text[] = ", CRC32=0x";
@@ -274,6 +296,19 @@ static void APP_ReportFpgaResult(void)
       sizeof(status_text) - 1U);
   APP_Uint32ToHex((uint8_t)g_ice40_status, &report[report_len], 2U);
   report_len += 2U;
+  report_len = APP_AppendBytes(
+      report,
+      report_len,
+      attempts_text,
+      sizeof(attempts_text) - 1U);
+  APP_Uint32ToHex(g_ice40.attempts, &report[report_len], 1U);
+  report_len += 1U;
+  report_len = APP_AppendBytes(
+      report,
+      report_len,
+      at_reset_text,
+      sizeof(at_reset_text) - 1U);
+  report[report_len++] = g_ice40.cdone_at_reset ? (uint8_t)'1' : (uint8_t)'0';
   report_len = APP_AppendBytes(
       report,
       report_len,

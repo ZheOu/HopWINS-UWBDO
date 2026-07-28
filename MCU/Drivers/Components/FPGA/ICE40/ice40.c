@@ -10,8 +10,21 @@
 
 /* Private define ------------------------------------------------------------*/
 
-/* FPGA-TN-02001 13.2: hold CRESET_B Low for at least 200 ns. */
-#define ICE40_CRESET_LOW_US        10U
+/*
+ * FPGA-TN-02001 13.2 asks for at least 200 ns. CRESET_B is driven open-drain
+ * with a pull-up, so the release is an RC edge rather than a driven one; the
+ * hold is generous to keep the pulse unambiguous at both ends.
+ */
+#define ICE40_CRESET_LOW_US        200U
+
+/*
+ * CDONE is open-drain with a pull-up, so it rises far more slowly than a
+ * push-pull pin. Used before the reads whose answer decides success.
+ */
+#define ICE40_CDONE_SETTLE_US      100U
+
+/* Time the device stays in reset between two configuration attempts. */
+#define ICE40_RETRY_SETTLE_US      1000U
 
 /* FPGA-TN-02001 13.2: wait at least 1200 us to clear configuration memory. */
 #define ICE40_CLEAR_MEMORY_US      2000U
@@ -59,6 +72,7 @@ static const uint8_t s_dummy[ICE40_TRAILING_DUMMY_BYTES] = {
 /* Private function prototypes -----------------------------------------------*/
 
 static bool ice40_platform_is_valid(const ice40_platform_t *platform);
+static void ice40_park_in_reset(const ice40_platform_t *platform);
 static ice40_status_t ice40_send_image(
     const ice40_platform_t *platform,
     const ice40_image_t *image);
@@ -151,6 +165,7 @@ ice40_status_t ice40_configure(
   device->image_len = image->len;
   device->sync_offset = 0U;
   device->cdone_clocks = 0U;
+  device->cdone_at_reset = false;
 
   status = ice40_check_image(image, &sync_offset);
   if (status != ICE40_STATUS_OK) {
@@ -158,51 +173,59 @@ ice40_status_t ice40_configure(
   }
   device->sync_offset = sync_offset;
 
-  /* Step 1/2: CRESET_B Low and SPI_SS Low. */
-  platform->spi_deselect();
-  platform->set_creset_b(false);
+  /*
+   * Step 1: SPI_SS Low, before CRESET_B moves at all. The board layer forces
+   * the configuration baud rate from inside spi_select(), which can
+   * re-initialise SPI1; doing that first keeps a peripheral re-init from
+   * landing between the reset pulse and the image.
+   */
   platform->spi_select();
 
-  /* Step 3: hold reset for at least 200 ns. */
+  /* Step 2: CRESET_B Low, held far longer than the 200 ns minimum. */
+  platform->set_creset_b(false);
   platform->delay_us(ICE40_CRESET_LOW_US);
 
   /*
-   * While CRESET_B is Low the FPGA must be driving CDONE Low. Reading it High
-   * here means CRESET_B or CDONE is not actually connected to the FPGA, which
-   * is worth catching before a full image is clocked out into nothing.
+   * A live device pulls CDONE Low for as long as CRESET_B is asserted. This is
+   * recorded rather than treated as fatal: running the sequence anyway costs
+   * 70 ms and tells us far more than refusing to start, and the flag combined
+   * with the final status separates a wiring fault from a rejected image.
    */
-  if (platform->get_cdone()) {
-    platform->spi_deselect();
-    platform->set_creset_b(true);
-    return ICE40_STATUS_CDONE_STUCK_HIGH;
-  }
+  device->cdone_at_reset = platform->get_cdone();
 
-  /* Step 4: release CRESET_B with SPI_SS still Low to enter SPI peripheral mode. */
+  /*
+   * Step 3: the CRESET_B rising edge WHILE SPI_SS IS STILL LOW is what selects
+   * SPI peripheral mode. With SPI_SS High here the device would come up as an
+   * SPI master looking for a boot Flash this board does not have.
+   */
   platform->set_creset_b(true);
 
-  /* Step 5: wait for the internal configuration memory to clear. */
+  /* Step 4: wait for the internal configuration memory to clear. */
   platform->delay_us(ICE40_CLEAR_MEMORY_US);
 
-  /* Step 6: SPI_SS High, 8 dummy clocks. */
+  /* Step 5: SPI_SS High, 8 dummy clocks. */
   platform->spi_deselect();
   status = ice40_send_dummy(platform, ICE40_LEADING_DUMMY_BYTES);
   if (status != ICE40_STATUS_OK) {
+    ice40_park_in_reset(platform);
     return status;
   }
 
-  /* Step 7: SPI_SS Low for the whole image, MSB first, no chip-select glitch. */
+  /* Step 6: SPI_SS Low for the whole image, MSB first, no chip-select glitch. */
   platform->spi_select();
   status = ice40_send_image(platform, image);
   platform->spi_deselect();
   if (status != ICE40_STATUS_OK) {
+    ice40_park_in_reset(platform);
     return status;
   }
 
-  /* Step 8: clock until CDONE floats High, within roughly 100 SPI_SCK cycles. */
+  /* Step 7: clock with SPI_SS High until CDONE rises, about 100 SPI_SCK cycles. */
   for (uint32_t i = 0U; i < ICE40_CDONE_MAX_BYTES; i++) {
     status = ice40_send_dummy(platform, 1U);
     if (status != ICE40_STATUS_OK) {
       device->cdone_clocks = cdone_clocks;
+      ice40_park_in_reset(platform);
       return status;
     }
 
@@ -215,18 +238,85 @@ ice40_status_t ice40_configure(
 
   device->cdone_clocks = cdone_clocks;
 
+  /*
+   * CDONE is an open-drain output pulled up by a resistor, so its rising edge
+   * is slow next to a byte time. One settled re-read before giving up keeps a
+   * still-rising edge from being called a timeout.
+   */
   if (!cdone_high) {
-    return ICE40_STATUS_CDONE_TIMEOUT;
+    platform->delay_us(ICE40_CDONE_SETTLE_US);
+    cdone_high = platform->get_cdone();
   }
 
-  /* Step 9: at least 49 more clocks so the user I/O go live. */
+  if (!cdone_high) {
+    ice40_park_in_reset(platform);
+    /*
+     * CDONE High during reset and still no rise afterwards is a different
+     * fault from a device that reset properly but would not take the image.
+     */
+    return device->cdone_at_reset
+        ? ICE40_STATUS_CDONE_STUCK_HIGH
+        : ICE40_STATUS_CDONE_TIMEOUT;
+  }
+
+  /* Step 8: at least 49 more clocks so the user I/O go live. */
   status = ice40_send_dummy(platform, ICE40_TRAILING_DUMMY_BYTES);
   if (status != ICE40_STATUS_OK) {
+    ice40_park_in_reset(platform);
     return status;
+  }
+
+  /*
+   * Re-read CDONE now the device should be in user mode. A device whose
+   * internal CRC check fails pulls CDONE back Low here, which would otherwise
+   * be reported as success.
+   */
+  platform->delay_us(ICE40_CDONE_SETTLE_US);
+  if (!platform->get_cdone()) {
+    ice40_park_in_reset(platform);
+    return ICE40_STATUS_CDONE_DROPPED;
   }
 
   device->configured = true;
   return ICE40_STATUS_OK;
+}
+
+ice40_status_t ice40_configure_retry(
+    ice40_device_t *device,
+    const ice40_platform_t *platform,
+    const ice40_image_t *image,
+    uint32_t max_attempts)
+{
+  ice40_status_t status = ICE40_STATUS_BAD_ARG;
+  uint32_t attempts = (max_attempts == 0U) ? 1U : max_attempts;
+
+  if (device == NULL) {
+    return ICE40_STATUS_BAD_ARG;
+  }
+
+  device->attempts = 0U;
+
+  for (uint32_t i = 0U; i < attempts; i++) {
+    /* Each attempt is a whole sequence; configuration cannot resume midway. */
+    status = ice40_configure(device, platform, image);
+    device->attempts = i + 1U;
+
+    if (status == ICE40_STATUS_OK) {
+      return status;
+    }
+
+    /* Neither the image nor the arguments change between attempts. */
+    if ((status == ICE40_STATUS_BAD_ARG) || (status == ICE40_STATUS_BAD_IMAGE)) {
+      return status;
+    }
+
+    /* ice40_configure() left the device in reset; let it settle first. */
+    if ((i + 1U) < attempts) {
+      platform->delay_us(ICE40_RETRY_SETTLE_US);
+    }
+  }
+
+  return status;
 }
 
 bool ice40_is_configured(const ice40_device_t *device)
@@ -245,6 +335,18 @@ static bool ice40_platform_is_valid(const ice40_platform_t *platform)
          (platform->spi_deselect != NULL) &&
          (platform->spi_write != NULL) &&
          (platform->delay_us != NULL);
+}
+
+/*
+ * Safe state after a failed attempt: SPI_SS released so the DW3000 can use the
+ * shared bus, and CRESET_B asserted so the FPGA keeps its I/O tri-stated rather
+ * than running a half-loaded configuration. It is also where the next attempt
+ * expects to start.
+ */
+static void ice40_park_in_reset(const ice40_platform_t *platform)
+{
+  platform->spi_deselect();
+  platform->set_creset_b(false);
 }
 
 static ice40_status_t ice40_send_image(
