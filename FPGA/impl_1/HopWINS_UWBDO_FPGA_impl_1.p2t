@@ -1,9 +1,0 @@
--w
--gui
--msgset "C:/Users/zhang/OneDrive/Desktop/UWBDO/HopWINS-UWBDO/FPGA/promote.xml"
--n 1
--t 1
--s 1
--cores 1
--hsp m
--exp parPathBased=ON

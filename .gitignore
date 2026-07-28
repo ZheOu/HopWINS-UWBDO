@@ -24,3 +24,29 @@ MCU/CMakeUserPresets.json
 
 # STM32CubeMX scratch data
 MCU/mx.scratch/
+
+# Lattice Radiant local state and generated project reports
+FPGA/.ng_run_manager.ini
+FPGA/.setting.ini
+FPGA/HopWINS_UWBDO_FPGA_tcl.html
+FPGA/HopWINS_UWBDO_FPGA_tcr.dir/
+FPGA/drc.log
+FPGA/promote.pfl
+FPGA/promote.xml
+FPGA/reportview.xml
+
+# Radiant implementation output: keep the MCU image and diffable reports
+FPGA/impl_1/*
+!FPGA/impl_1/HopWINS_UWBDO_FPGA_impl_1.bin
+!FPGA/impl_1/CPEReport*.txt
+!FPGA/impl_1/*.arearep
+!FPGA/impl_1/*.drc
+!FPGA/impl_1/*.ior
+!FPGA/impl_1/*.mrp
+!FPGA/impl_1/*.pad
+!FPGA/impl_1/*.par
+!FPGA/impl_1/*.pwrprd
+!FPGA/impl_1/*.tw1
+!FPGA/impl_1/*.twr
+!FPGA/impl_1/*.tws
+!FPGA/impl_1/*_lattice.srp

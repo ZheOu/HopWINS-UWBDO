@@ -1,7 +1,0 @@
-#Start recording tcl command: 7/28/2026 16:52:55
-#Project Location: C:/Users/zhang/OneDrive/Desktop/UWBDO/HopWINS-UWBDO/HopWINS_UWBDO_FPGA; Project name: HopWINS_UWBDO_FPGA
-prj_create -name "HopWINS_UWBDO_FPGA" -impl "impl_1" -dev iCE40UP5K-SG48I -performance "High-Performance_1.2V" -synthesis "lse"
-file copy -force -- "C:/Users/zhang/my_designs/uwb_timer_fpga/source/impl_1/top.v" "C:/Users/zhang/my_designs/uwb_timer_fpga/source/impl_1/timing.sdc" "C:/Users/zhang/my_designs/uwb_timer_fpga/source/impl_1/pin_assign.pdc" "C:/Users/zhang/OneDrive/Desktop/UWBDO/HopWINS-UWBDO/HopWINS_UWBDO_FPGA/source/impl_1"
-prj_add_source "C:/Users/zhang/OneDrive/Desktop/UWBDO/HopWINS-UWBDO/HopWINS_UWBDO_FPGA/source/impl_1/top.v" "C:/Users/zhang/OneDrive/Desktop/UWBDO/HopWINS-UWBDO/HopWINS_UWBDO_FPGA/source/impl_1/timing.sdc" "C:/Users/zhang/OneDrive/Desktop/UWBDO/HopWINS-UWBDO/HopWINS_UWBDO_FPGA/source/impl_1/pin_assign.pdc"
-prj_save 
-#Stop recording: 7/28/2026 16:54:30

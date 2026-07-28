@@ -1,7 +1,0 @@
-DRC: Design Rule Check Radiant Software (64-bit) 2026.1.0.37.0
-Tue Jul 28 17:37:50 2026
-
-ERROR <71003014> - In the bank [1], VCCIO for [CLK_IN] is incompatible with port [SYNC] in the same bank.
-ERROR <71003014> - In the bank [1], VCCIO for [CLK] is incompatible with port [CLK_IN] in the same bank.
-ERROR <71003014> - In the bank [1], VCCIO for [SYNC] is incompatible with port [CLK_IN] in the same bank.
-ERROR <71003014> - In the bank [1], VCCIO for [PPS] is incompatible with port [CLK_IN] in the same bank.
