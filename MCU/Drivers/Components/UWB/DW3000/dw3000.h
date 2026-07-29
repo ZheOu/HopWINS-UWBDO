@@ -19,6 +19,9 @@ extern "C" {
 #define DW3000_DEVICE_ID_EXPECTED UINT32_C(0xDECA0302)
 #define DW3000_TIMESTAMP_MASK     UINT64_C(0x000000FFFFFFFFFF)
 #define DW3000_FRAME_FCS_LEN      2U
+#define DW3000_RX_FRAME_MAX_LEN   1023U
+#define DW3000_CIR_MAX_SAMPLES    1016U
+#define DW3000_CIR_SAMPLE_BYTES   6U
 
 typedef enum {
   DW3000_STATUS_OK = 0,
@@ -34,6 +37,10 @@ typedef enum {
   DW3000_STATUS_TX_ERROR = -10,
   DW3000_STATUS_TX_LATE = -11,
   DW3000_STATUS_TIMEOUT = -12,
+  DW3000_STATUS_RX_ERROR = -13,
+  DW3000_STATUS_RX_CRC_ERROR = -14,
+  DW3000_STATUS_RX_FRAME_TOO_LONG = -15,
+  DW3000_STATUS_CIR_ERROR = -16,
 } dw3000_status_t;
 
 typedef enum {
@@ -119,6 +126,32 @@ typedef struct {
   uint64_t timestamp;
 } dw3000_tx_result_t;
 
+typedef struct {
+  bool complete;
+  bool ranging_frame;
+  uint16_t frame_len;
+  uint64_t timestamp;
+  uint32_t system_status;
+  int16_t clock_offset;
+  int32_t carrier_integrator;
+} dw3000_rx_result_t;
+
+typedef struct {
+  uint32_t power;
+  uint32_t first_path_amplitude_1;
+  uint32_t first_path_amplitude_2;
+  uint32_t first_path_amplitude_3;
+  uint32_t peak_amplitude;
+  uint32_t first_path_threshold;
+  uint16_t peak_index;
+  uint16_t first_path_index;
+  uint16_t accumulated_symbols;
+  uint16_t early_first_path_index;
+  uint8_t early_first_path_confidence;
+  int16_t rssi_q8_8;
+  int16_t first_path_power_q8_8;
+} dw3000_cir_diagnostic_t;
+
 /* Temporary reference-clock diagnostic; remove after board clock validation. */
 typedef struct {
   int32_t pll_result;
@@ -157,6 +190,25 @@ dw3000_status_t dw3000_abort_transmit(
 dw3000_status_t dw3000_poll_transmit(
     const dw3000_device_t *device,
     dw3000_tx_result_t *result);
+dw3000_status_t dw3000_receive_start(
+    const dw3000_device_t *device);
+dw3000_status_t dw3000_abort_receive(
+    const dw3000_device_t *device);
+dw3000_status_t dw3000_poll_receive(
+    const dw3000_device_t *device,
+    uint8_t *frame,
+    uint16_t frame_capacity,
+    dw3000_rx_result_t *result);
+uint16_t dw3000_get_cir_sample_count(
+    const dw3000_device_t *device);
+dw3000_status_t dw3000_read_cir_diagnostics(
+    const dw3000_device_t *device,
+    dw3000_cir_diagnostic_t *diagnostic);
+dw3000_status_t dw3000_read_cir_48b(
+    const dw3000_device_t *device,
+    uint16_t sample_offset,
+    uint16_t sample_count,
+    uint8_t *samples);
 dw3000_status_t dw3000_run_clock_diagnostic(
     const dw3000_device_t *device,
     dw3000_clock_diagnostic_t *diagnostic);

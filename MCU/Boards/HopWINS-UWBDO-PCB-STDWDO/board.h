@@ -14,6 +14,7 @@ extern "C" {
 #endif
 
 /* Includes ------------------------------------------------------------------*/
+#include "board_config.h"
 #include "main.h"
 #include <stdbool.h>
 #include <stddef.h>
@@ -43,9 +44,18 @@ typedef enum {
 } board_clkdp_mode_t;
 
 typedef enum {
-  BOARD_CLOCK_XO_I2C = 0,
+  BOARD_CLOCK_XO_NONE = 0,
+  BOARD_CLOCK_XO_I2C,
   BOARD_CLOCK_XO_CLKDP,
 } board_clock_xo_t;
+
+typedef struct {
+  const char *name;
+  board_clock_xo_t installed_xo;
+  bool has_fpga;
+  bool has_clock_control;
+  bool has_external_clock_counter;
+} board_capabilities_t;
 
 typedef struct {
   GPIO_TypeDef *port;
@@ -110,6 +120,7 @@ typedef struct {
 } board_components_t;
 
 void board_init(void);
+const board_capabilities_t *board_get_capabilities(void);
 const board_components_t *board_get_components(void);
 const struct dw3000_platform *board_uwb_get_platform(void);
 const struct ice40_platform *board_fpga_get_platform(void);

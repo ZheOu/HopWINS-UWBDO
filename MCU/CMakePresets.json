@@ -2,60 +2,72 @@
     "version": 3,
     "configurePresets": [
         {
-            "name": "default",
+            "name": "base",
             "hidden": true,
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/build/${presetName}",
-		    "toolchainFile": "${sourceDir}/cmake/gcc-arm-none-eabi.cmake",
+            "toolchainFile": "${sourceDir}/cmake/gcc-arm-none-eabi.cmake",
             "cacheVariables": {
+                "HOPWINS_ENABLE_BOOT_UWB_CLOCK_DIAGNOSTIC": false
             }
         },
         {
-            "name": "Debug",
-            "inherits": "default",
+            "name": "Leader-Debug",
+            "displayName": "DO Leader (Debug)",
+            "inherits": "base",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
-                "HOPWINS_ENABLE_BOOT_UWB_CLOCK_DIAGNOSTIC": true
+                "HOPWINS_BOARD_TARGET": "LEADER_UWB_ONLY",
+                "HOPWINS_APP_ROLE": "DO_LEADER"
             }
         },
         {
-            "name": "RelWithDebInfo",
-            "inherits": "default",
+            "name": "Leader-Release",
+            "displayName": "DO Leader (Release)",
+            "inherits": "base",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+                "CMAKE_BUILD_TYPE": "Release",
+                "HOPWINS_BOARD_TARGET": "LEADER_UWB_ONLY",
+                "HOPWINS_APP_ROLE": "DO_LEADER"
             }
         },
         {
-            "name": "Release",
-            "inherits": "default",
+            "name": "Follower-Debug",
+            "displayName": "DO Follower (Debug)",
+            "inherits": "base",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release"
+                "CMAKE_BUILD_TYPE": "Debug",
+                "HOPWINS_BOARD_TARGET": "FOLLOWER_FULL",
+                "HOPWINS_APP_ROLE": "DO_FOLLOWER"
             }
         },
         {
-            "name": "MinSizeRel",
-            "inherits": "default",
+            "name": "Follower-Release",
+            "displayName": "DO Follower (Release)",
+            "inherits": "base",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "MinSizeRel"
+                "CMAKE_BUILD_TYPE": "Release",
+                "HOPWINS_BOARD_TARGET": "FOLLOWER_FULL",
+                "HOPWINS_APP_ROLE": "DO_FOLLOWER"
             }
         }
     ],
     "buildPresets": [
         {
-            "name": "Debug",
-            "configurePreset": "Debug"
+            "name": "Leader-Debug",
+            "configurePreset": "Leader-Debug"
         },
         {
-            "name": "RelWithDebInfo",
-            "configurePreset": "RelWithDebInfo"
+            "name": "Leader-Release",
+            "configurePreset": "Leader-Release"
         },
         {
-            "name": "Release",
-            "configurePreset": "Release"
+            "name": "Follower-Debug",
+            "configurePreset": "Follower-Debug"
         },
         {
-            "name": "MinSizeRel",
-            "configurePreset": "MinSizeRel"
+            "name": "Follower-Release",
+            "configurePreset": "Follower-Release"
         }
     ]
 }

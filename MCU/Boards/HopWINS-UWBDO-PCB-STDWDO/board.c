@@ -14,6 +14,16 @@
 
 #define BOARD_PC_TX_BUFFER_SIZE UINT32_C(16384)
 
+#if HOPWINS_BOARD_DEFAULT_XO == HOPWINS_BOARD_XO_NONE
+#define BOARD_INSTALLED_XO BOARD_CLOCK_XO_NONE
+#elif HOPWINS_BOARD_DEFAULT_XO == HOPWINS_BOARD_XO_I2C
+#define BOARD_INSTALLED_XO BOARD_CLOCK_XO_I2C
+#elif HOPWINS_BOARD_DEFAULT_XO == HOPWINS_BOARD_XO_CLKDP
+#define BOARD_INSTALLED_XO BOARD_CLOCK_XO_CLKDP
+#else
+#error "Unsupported HOPWINS_BOARD_DEFAULT_XO"
+#endif
+
 /* Peripheral Handles --------------------------------------------------------*/
 extern SPI_HandleTypeDef hspi1;
 extern I2C_HandleTypeDef hi2c2;
@@ -36,11 +46,13 @@ static int32_t board_uwb_spi_write(
     uint16_t data_len,
     const uint8_t *trailer,
     uint16_t trailer_len);
+#if HOPWINS_BOARD_HAS_FPGA
 static void board_fpga_set_creset_b(bool high);
 static bool board_fpga_get_cdone(void);
 static void board_fpga_spi_select(void);
 static void board_fpga_spi_deselect(void);
 static int32_t board_fpga_spi_write(const uint8_t *data, uint16_t len);
+#endif
 static void board_delay_ms(uint32_t delay_ms);
 static void board_delay_us(uint32_t delay_us);
 static uint32_t board_time_ms(void);
@@ -54,6 +66,15 @@ static volatile uint32_t s_pc_tx_tail;
 static volatile uint32_t s_pc_tx_in_flight;
 static volatile uint32_t s_pc_tx_errors;
 static volatile bool s_pc_tx_dma_active;
+
+static const board_capabilities_t s_capabilities = {
+  .name = HOPWINS_BOARD_NAME,
+  .installed_xo = BOARD_INSTALLED_XO,
+  .has_fpga = HOPWINS_BOARD_HAS_FPGA != 0,
+  .has_clock_control = HOPWINS_BOARD_HAS_CLOCK_CONTROL != 0,
+  .has_external_clock_counter =
+      HOPWINS_BOARD_HAS_EXTERNAL_CLOCK_COUNTER != 0,
+};
 
 static board_components_t s_board = {
   .uwb = {
@@ -76,7 +97,7 @@ static board_components_t s_board = {
     .done = {GPIO_FPGADONE_GPIO_Port, GPIO_FPGADONE_Pin, GPIO_PIN_SET},
   },
   .clock = {
-    .installed_xo = BOARD_CLOCK_XO_I2C,
+    .installed_xo = BOARD_INSTALLED_XO,
     .i2c_xo = {
       .i2c = {
         .hi2c = &hi2c2,
@@ -110,6 +131,7 @@ static const dw3000_platform_t s_dw3000_platform = {
   .unlock = NULL,
 };
 
+#if HOPWINS_BOARD_HAS_FPGA
 static const ice40_platform_t s_ice40_platform = {
   .set_creset_b = board_fpga_set_creset_b,
   .get_cdone = board_fpga_get_cdone,
@@ -118,6 +140,7 @@ static const ice40_platform_t s_ice40_platform = {
   .spi_write = board_fpga_spi_write,
   .delay_us = board_delay_us,
 };
+#endif
 
 static board_status_t hal_to_board_status(HAL_StatusTypeDef status)
 {
@@ -144,7 +167,11 @@ static const board_spi_device_t *spi_device_from_target(board_spi_target_t targe
     case BOARD_SPI_TARGET_UWB:
       return &s_board.uwb.spi;
     case BOARD_SPI_TARGET_FPGA:
+#if HOPWINS_BOARD_HAS_FPGA
       return &s_board.fpga.spi;
+#else
+      return NULL;
+#endif
     default:
       return NULL;
   }
@@ -181,10 +208,14 @@ void board_init(void)
   s_pc_tx_dma_active = false;
 
   board_spi_deselect_all();
+#if HOPWINS_BOARD_HAS_FPGA
   board_gpio_write(&s_board.fpga.enable, false);
   board_gpio_write(&s_board.fpga.reset_n, false);
+#endif
   board_uwb_reset_release();
+#if HOPWINS_BOARD_HAS_CLOCK_CONTROL
   board_clock_select_xo(s_board.clock.installed_xo);
+#endif
 }
 
 const struct dw3000_platform *board_uwb_get_platform(void)
@@ -194,13 +225,27 @@ const struct dw3000_platform *board_uwb_get_platform(void)
 
 const struct ice40_platform *board_fpga_get_platform(void)
 {
+#if HOPWINS_BOARD_HAS_FPGA
   return &s_ice40_platform;
+#else
+  return NULL;
+#endif
 }
 
 void board_clock_select_xo(board_clock_xo_t installed_xo)
 {
+#if HOPWINS_BOARD_HAS_CLOCK_CONTROL
   s_board.clock.installed_xo = installed_xo;
   board_clkdp_set_mode(BOARD_CLKDP_TRISTATE);
+#else
+  (void)installed_xo;
+  s_board.clock.installed_xo = BOARD_CLOCK_XO_NONE;
+#endif
+}
+
+const board_capabilities_t *board_get_capabilities(void)
+{
+  return &s_capabilities;
 }
 
 const board_components_t *board_get_components(void)
@@ -215,7 +260,8 @@ board_clock_xo_t board_clock_get_selected_xo(void)
 
 const board_i2c_device_t *board_clock_get_i2c_xo(void)
 {
-  if (s_board.clock.installed_xo != BOARD_CLOCK_XO_I2C) {
+  if (!s_capabilities.has_clock_control ||
+      (s_board.clock.installed_xo != BOARD_CLOCK_XO_I2C)) {
     return NULL;
   }
 
@@ -224,6 +270,10 @@ const board_i2c_device_t *board_clock_get_i2c_xo(void)
 
 void board_clock_i2c_xo_set_address(uint16_t address_7bit)
 {
+  if (!s_capabilities.has_clock_control) {
+    return;
+  }
+
   s_board.clock.i2c_xo.i2c.address_7bit = address_7bit;
 }
 
@@ -248,7 +298,9 @@ bool board_gpio_read(const board_gpio_t *gpio)
 void board_spi_deselect_all(void)
 {
   board_gpio_write(&s_board.uwb.spi.cs, false);
+#if HOPWINS_BOARD_HAS_FPGA
   board_gpio_write(&s_board.fpga.spi.cs, false);
+#endif
 }
 
 board_status_t board_spi_select(board_spi_target_t target)
@@ -506,29 +558,44 @@ board_status_t board_crc32_calculate(
 
 board_status_t board_external_clock_counter_start(void)
 {
+#if HOPWINS_BOARD_HAS_EXTERNAL_CLOCK_COUNTER
   __HAL_TIM_SET_COUNTER(s_board.external_clock_timer.htim, 0U);
   __HAL_TIM_CLEAR_FLAG(s_board.external_clock_timer.htim, TIM_FLAG_UPDATE);
   return hal_to_board_status(HAL_TIM_Base_Start(s_board.external_clock_timer.htim));
+#else
+  return BOARD_ERROR;
+#endif
 }
 
 board_status_t board_external_clock_counter_stop(void)
 {
+#if HOPWINS_BOARD_HAS_EXTERNAL_CLOCK_COUNTER
   return hal_to_board_status(HAL_TIM_Base_Stop(s_board.external_clock_timer.htim));
+#else
+  return BOARD_ERROR;
+#endif
 }
 
 uint32_t board_external_clock_counter_get(void)
 {
+#if HOPWINS_BOARD_HAS_EXTERNAL_CLOCK_COUNTER
   return __HAL_TIM_GET_COUNTER(s_board.external_clock_timer.htim);
+#else
+  return 0U;
+#endif
 }
 
 void board_external_clock_counter_reset(void)
 {
+#if HOPWINS_BOARD_HAS_EXTERNAL_CLOCK_COUNTER
   __HAL_TIM_SET_COUNTER(s_board.external_clock_timer.htim, 0U);
   __HAL_TIM_CLEAR_FLAG(s_board.external_clock_timer.htim, TIM_FLAG_UPDATE);
+#endif
 }
 
 void board_clkdp_set_mode(board_clkdp_mode_t mode)
 {
+#if HOPWINS_BOARD_HAS_CLOCK_CONTROL
   GPIO_InitTypeDef GPIO_InitStruct = {0};
 
   GPIO_InitStruct.Pin = s_board.clock.clkdp_xo.dp.pin;
@@ -554,6 +621,9 @@ void board_clkdp_set_mode(board_clkdp_mode_t mode)
   }
 
   HAL_GPIO_Init(s_board.clock.clkdp_xo.dp.port, &GPIO_InitStruct);
+#else
+  (void)mode;
+#endif
 }
 
 static board_status_t board_spi_set_prescaler(
@@ -752,6 +822,7 @@ static int32_t board_uwb_spi_write(
   return (int32_t)status;
 }
 
+#if HOPWINS_BOARD_HAS_FPGA
 /*
  * CRESET_B is active low. fpga.reset_n carries the raw pin level because its
  * active_state is GPIO_PIN_SET, so the level maps straight through: false
@@ -804,6 +875,7 @@ static int32_t board_fpga_spi_write(const uint8_t *data, uint16_t len)
   return (int32_t)hal_to_board_status(
       HAL_SPI_Transmit(dev->hspi, data, len, dev->timeout_ms));
 }
+#endif
 
 static void board_delay_ms(uint32_t delay_ms)
 {

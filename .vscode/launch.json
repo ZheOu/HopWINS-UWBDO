@@ -1,0 +1,33 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "stlinkgdbtarget",
+            "request": "launch",
+            "name": "STM32: DO Leader Debug",
+            "cwd": "${workspaceFolder}/MCU",
+            "preLaunchTask": "CMake: Build Leader-Debug",
+            "runEntry": "main",
+            "imagesAndSymbols": [
+                {
+                    "imageFileName": "${workspaceFolder}/MCU/build/Leader-Debug/HopWINS-DO-Leader.elf",
+                    "symbolFileName": "${workspaceFolder}/MCU/build/Leader-Debug/HopWINS-DO-Leader.elf"
+                }
+            ]
+        },
+        {
+            "type": "stlinkgdbtarget",
+            "request": "launch",
+            "name": "STM32: DO Follower Debug",
+            "cwd": "${workspaceFolder}/MCU",
+            "preLaunchTask": "CMake: Build Follower-Debug",
+            "runEntry": "main",
+            "imagesAndSymbols": [
+                {
+                    "imageFileName": "${workspaceFolder}/MCU/build/Follower-Debug/HopWINS-DO-Follower.elf",
+                    "symbolFileName": "${workspaceFolder}/MCU/build/Follower-Debug/HopWINS-DO-Follower.elf"
+                }
+            ]
+        }
+    ]
+}

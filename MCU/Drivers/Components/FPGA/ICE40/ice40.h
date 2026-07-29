@@ -73,7 +73,7 @@ typedef enum {
   ICE40_STATUS_BAD_ARG = -1,
   ICE40_STATUS_BAD_IMAGE = -2,
   ICE40_STATUS_SPI_ERROR = -3,
-  /** CDONE never rose, and it was already High while CRESET_B was asserted. */
+  /** CDONE stayed High in reset: device absent or CRESET_B/CDONE disconnected. */
   ICE40_STATUS_CDONE_STUCK_HIGH = -4,
   /** CDONE never rose, having correctly been Low while CRESET_B was asserted. */
   ICE40_STATUS_CDONE_TIMEOUT = -5,
@@ -119,9 +119,8 @@ typedef struct ice40_device {
   uint32_t attempts;     /**< Sequences run, including the one that succeeded. */
   /**
     * CDONE sampled while CRESET_B was still asserted on the last attempt. A
-    * live device holds it Low there; High means CRESET_B or CDONE is not
-    * reaching the FPGA. Recorded rather than aborting, so the sequence still
-    * runs and the real failure mode stays visible.
+    * live device holds it Low there; High means the FPGA is absent or
+    * CRESET_B/CDONE is not reaching it, and configuration is aborted.
     */
   bool cdone_at_reset;
 } ice40_device_t;

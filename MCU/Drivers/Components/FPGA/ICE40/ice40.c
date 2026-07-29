@@ -185,13 +185,17 @@ ice40_status_t ice40_configure(
   platform->set_creset_b(false);
   platform->delay_us(ICE40_CRESET_LOW_US);
 
-  /*
-   * A live device pulls CDONE Low for as long as CRESET_B is asserted. This is
-   * recorded rather than treated as fatal: running the sequence anyway costs
-   * 70 ms and tells us far more than refusing to start, and the flag combined
-   * with the final status separates a wiring fault from a rejected image.
-   */
+  /* A live device must pull CDONE Low while CRESET_B is asserted. */
   device->cdone_at_reset = platform->get_cdone();
+  if (device->cdone_at_reset) {
+    /*
+     * A pull-up reads High when the FPGA is absent. Continuing would see that
+     * same High after the first dummy byte and falsely report configuration
+     * success, even though no device ever acknowledged reset.
+     */
+    ice40_park_in_reset(platform);
+    return ICE40_STATUS_CDONE_STUCK_HIGH;
+  }
 
   /*
    * Step 3: the CRESET_B rising edge WHILE SPI_SS IS STILL LOW is what selects
@@ -250,13 +254,7 @@ ice40_status_t ice40_configure(
 
   if (!cdone_high) {
     ice40_park_in_reset(platform);
-    /*
-     * CDONE High during reset and still no rise afterwards is a different
-     * fault from a device that reset properly but would not take the image.
-     */
-    return device->cdone_at_reset
-        ? ICE40_STATUS_CDONE_STUCK_HIGH
-        : ICE40_STATUS_CDONE_TIMEOUT;
+    return ICE40_STATUS_CDONE_TIMEOUT;
   }
 
   /* Step 8: at least 49 more clocks so the user I/O go live. */
@@ -306,7 +304,9 @@ ice40_status_t ice40_configure_retry(
     }
 
     /* Neither the image nor the arguments change between attempts. */
-    if ((status == ICE40_STATUS_BAD_ARG) || (status == ICE40_STATUS_BAD_IMAGE)) {
+    if ((status == ICE40_STATUS_BAD_ARG) ||
+        (status == ICE40_STATUS_BAD_IMAGE) ||
+        (status == ICE40_STATUS_CDONE_STUCK_HIGH)) {
       return status;
     }
 

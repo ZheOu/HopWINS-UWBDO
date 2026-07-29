@@ -6,8 +6,8 @@ project-facing adapter.
 ## Compiled files
 
 - `dw3000.c/.h`: Stable project API, SDK callback adapter, reset/probe/init,
-  project radio configuration, immediate/delayed TX, status polling, and
-  device-ID validation.
+  project radio configuration, TX/RX polling, frame/timestamp extraction,
+  full 48-bit CIR capture, CIA diagnostics, and device-ID validation.
 - `dw3000_device.c`: Qorvo register-level device implementation. Keep this
   vendor core intact unless applying a reviewed SDK fix.
 - `deca_compat.c`: Qorvo public `dwt_*` compatibility API and driver probing.
@@ -42,8 +42,11 @@ IRQ. Add board lock/unlock callbacks when IRQ handling is introduced.
 6. Switch SPI1 to 12 MHz and read the device ID again.
 7. Translate the project `dw3000_radio_config_t` into Qorvo `dwt_config_t` and
    call `dwt_configure()`, `dwt_configuretxrf()`, and the antenna-delay APIs.
-8. Write a frame, program `DX_TIME`, issue delayed TX, poll `TXFRS`, and read
-   the 40-bit transmitted timestamp.
+8. For TX, write a frame, program `DX_TIME`, issue delayed TX, poll `TXFRS`,
+   and read the 40-bit transmitted timestamp.
+9. For RX/CIR, enable full CIA logging before RX, wait for `RXFCG`, read the
+   frame and 40-bit timestamp, then read Ipatov diagnostics and accumulator
+   samples before re-enabling RX.
 
 The board implementation owns STM32 HAL handles, pins, SPI rates, reset
 electrical behavior, and delay timing. The component driver does not include

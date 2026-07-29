@@ -35,54 +35,96 @@ enable_language(C ASM)
 
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME})
+
+include(Boards/HopWINS-UWBDO-PCB-STDWDO/board_target.cmake)
+
+set(
+    HOPWINS_APP_ROLE
+    "DO_FOLLOWER"
+    CACHE STRING
+    "Top-level firmware role"
+)
+set_property(
+    CACHE HOPWINS_APP_ROLE
+    PROPERTY STRINGS DO_LEADER DO_FOLLOWER
+)
+
+if(HOPWINS_APP_ROLE STREQUAL "DO_LEADER")
+    set(HOPWINS_APP_ROLE_DEFINE HOPWINS_APP_ROLE_DO_LEADER)
+    set(HOPWINS_FIRMWARE_OUTPUT_NAME "HopWINS-DO-Leader")
+elseif(HOPWINS_APP_ROLE STREQUAL "DO_FOLLOWER")
+    set(HOPWINS_APP_ROLE_DEFINE HOPWINS_APP_ROLE_DO_FOLLOWER)
+    set(HOPWINS_FIRMWARE_OUTPUT_NAME "HopWINS-DO-Follower")
+    if(NOT HOPWINS_BOARD_EMBED_FPGA_IMAGE OR
+       NOT HOPWINS_BOARD_HAS_CLOCK_CONTROL)
+        message(FATAL_ERROR
+            "DO_FOLLOWER requires a PCB target with FPGA and clock control")
+    endif()
+else()
+    message(FATAL_ERROR
+        "Unsupported HOPWINS_APP_ROLE: ${HOPWINS_APP_ROLE}")
+endif()
+
+set_target_properties(
+    ${CMAKE_PROJECT_NAME}
+    PROPERTIES OUTPUT_NAME "${HOPWINS_FIRMWARE_OUTPUT_NAME}"
+)
 set_property(
     TARGET ${CMAKE_PROJECT_NAME}
     APPEND PROPERTY LINK_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/STM32U585xx_FLASH.ld"
 )
 
-# Embed the Lattice configuration image in the STM32 internal Flash image.
-set(FPGA_IMAGE_BIN
-    "${CMAKE_CURRENT_SOURCE_DIR}/../FPGA/impl_1/HopWINS_UWBDO_FPGA_impl_1.bin"
-    CACHE FILEPATH "Path to the iCE40 configuration binary")
-set(FPGA_IMAGE_MAX_SIZE 131072)
-set(FPGA_IMAGE_OBJECT "${CMAKE_CURRENT_BINARY_DIR}/fpga_image.o")
-
-if(NOT EXISTS "${FPGA_IMAGE_BIN}")
-    message(FATAL_ERROR "FPGA image not found: ${FPGA_IMAGE_BIN}")
-endif()
-
-file(SIZE "${FPGA_IMAGE_BIN}" FPGA_IMAGE_SIZE)
-if(FPGA_IMAGE_SIZE GREATER FPGA_IMAGE_MAX_SIZE)
-    message(FATAL_ERROR
-        "FPGA image is ${FPGA_IMAGE_SIZE} bytes; reserved Flash capacity is "
-        "${FPGA_IMAGE_MAX_SIZE} bytes")
-endif()
-
 message(STATUS
-    "FPGA image: ${FPGA_IMAGE_BIN} (${FPGA_IMAGE_SIZE}/${FPGA_IMAGE_MAX_SIZE} bytes)")
+    "Firmware: board=${HOPWINS_BOARD_TARGET}, role=${HOPWINS_APP_ROLE}, "
+    "build=${CMAKE_BUILD_TYPE}")
 
-add_custom_command(
-    OUTPUT "${FPGA_IMAGE_OBJECT}"
-    COMMAND "${CMAKE_OBJCOPY}"
-        -I binary
-        -O elf32-littlearm
-        -B arm
-        --rename-section
-        .data=.fpga_image,alloc,load,readonly,data,contents
-        "${FPGA_IMAGE_BIN}"
+if(HOPWINS_BOARD_EMBED_FPGA_IMAGE)
+    # Embed the Lattice configuration image in the STM32 internal Flash image.
+    set(FPGA_IMAGE_BIN
+        "${CMAKE_CURRENT_SOURCE_DIR}/../FPGA/impl_1/HopWINS_UWBDO_FPGA_impl_1.bin"
+        CACHE FILEPATH "Path to the iCE40 configuration binary")
+    set(FPGA_IMAGE_MAX_SIZE 131072)
+    set(FPGA_IMAGE_OBJECT "${CMAKE_CURRENT_BINARY_DIR}/fpga_image.o")
+
+    if(NOT EXISTS "${FPGA_IMAGE_BIN}")
+        message(FATAL_ERROR "FPGA image not found: ${FPGA_IMAGE_BIN}")
+    endif()
+
+    file(SIZE "${FPGA_IMAGE_BIN}" FPGA_IMAGE_SIZE)
+    if(FPGA_IMAGE_SIZE GREATER FPGA_IMAGE_MAX_SIZE)
+        message(FATAL_ERROR
+            "FPGA image is ${FPGA_IMAGE_SIZE} bytes; reserved Flash capacity is "
+            "${FPGA_IMAGE_MAX_SIZE} bytes")
+    endif()
+
+    message(STATUS
+        "FPGA image: ${FPGA_IMAGE_BIN} (${FPGA_IMAGE_SIZE}/${FPGA_IMAGE_MAX_SIZE} bytes)")
+
+    add_custom_command(
+        OUTPUT "${FPGA_IMAGE_OBJECT}"
+        COMMAND "${CMAKE_OBJCOPY}"
+            -I binary
+            -O elf32-littlearm
+            -B arm
+            --rename-section
+            .data=.fpga_image,alloc,load,readonly,data,contents
+            "${FPGA_IMAGE_BIN}"
+            "${FPGA_IMAGE_OBJECT}"
+        DEPENDS "${FPGA_IMAGE_BIN}"
+        COMMENT "Embedding iCE40 configuration image"
+        VERBATIM
+    )
+
+    set_source_files_properties(
         "${FPGA_IMAGE_OBJECT}"
-    DEPENDS "${FPGA_IMAGE_BIN}"
-    COMMENT "Embedding iCE40 configuration image"
-    VERBATIM
-)
-
-set_source_files_properties(
-    "${FPGA_IMAGE_OBJECT}"
-    PROPERTIES
-        GENERATED TRUE
-        EXTERNAL_OBJECT TRUE
-)
+        PROPERTIES
+            GENERATED TRUE
+            EXTERNAL_OBJECT TRUE
+    )
+else()
+    message(STATUS "PCB assembly: FPGA not populated; image is not embedded")
+endif()
 
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
@@ -97,14 +139,19 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     Boards/HopWINS-UWBDO-PCB-STDWDO/board.c
-    Drivers/Components/FPGA/ICE40/ice40.c
     Drivers/Components/UWB/DW3000/dw3000.c
     Drivers/Components/UWB/DW3000/deca_compat.c
     Drivers/Components/UWB/DW3000/deca_interface.c
     Drivers/Components/UWB/DW3000/deca_rsl.c
     Drivers/Components/UWB/DW3000/dw3000_device.c
-    "${FPGA_IMAGE_OBJECT}"
 )
+
+if(HOPWINS_BOARD_EMBED_FPGA_IMAGE)
+    target_sources(${CMAKE_PROJECT_NAME} PRIVATE
+        Drivers/Components/FPGA/ICE40/ice40.c
+        "${FPGA_IMAGE_OBJECT}"
+    )
+endif()
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
@@ -118,6 +165,9 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined symbols
     USE_DRV_DW3000
+    HOPWINS_BOARD_TARGET=${HOPWINS_BOARD_TARGET_DEFINE}
+    HOPWINS_APP_ROLE=${HOPWINS_APP_ROLE_DEFINE}
+    HOPWINS_BUILD_TYPE_NAME="${CMAKE_BUILD_TYPE}"
 )
 
 # Add linked libraries

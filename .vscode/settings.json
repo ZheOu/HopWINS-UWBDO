@@ -1,9 +1,7 @@
 {
     "cmake.sourceDirectory": "${workspaceFolder}/MCU",
     "cmake.cmakePath": "cube-cmake",
-    "cmake.configureArgs": [
-        "-DCMAKE_COMMAND=cube-cmake"
-    ],
+    "cmake.useCMakePresets": "always",
     "cmake.preferredGenerators": [
         "Ninja"
     ],

@@ -1,0 +1,49 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "CMake: Configure Leader-Debug",
+            "type": "cmake",
+            "command": "configure",
+            "preset": "Leader-Debug",
+            "options": {
+                "cwd": "${workspaceFolder}/MCU"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "CMake: Build Leader-Debug",
+            "type": "cmake",
+            "command": "build",
+            "preset": "Leader-Debug",
+            "options": {
+                "cwd": "${workspaceFolder}/MCU"
+            },
+            "dependsOn": "CMake: Configure Leader-Debug",
+            "dependsOrder": "sequence",
+            "problemMatcher": "$gcc"
+        },
+        {
+            "label": "CMake: Configure Follower-Debug",
+            "type": "cmake",
+            "command": "configure",
+            "preset": "Follower-Debug",
+            "options": {
+                "cwd": "${workspaceFolder}/MCU"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "CMake: Build Follower-Debug",
+            "type": "cmake",
+            "command": "build",
+            "preset": "Follower-Debug",
+            "options": {
+                "cwd": "${workspaceFolder}/MCU"
+            },
+            "dependsOn": "CMake: Configure Follower-Debug",
+            "dependsOrder": "sequence",
+            "problemMatcher": "$gcc"
+        }
+    ]
+}

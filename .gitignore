@@ -4,6 +4,8 @@
 # VS Code project settings
 .vscode/*
 !.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
 
 # CMake and Ninja build output
 MCU/build/

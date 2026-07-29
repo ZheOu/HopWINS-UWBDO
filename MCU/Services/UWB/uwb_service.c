@@ -1,7 +1,7 @@
 /**
   ******************************************************************************
   * @file           : uwb_service.c
-  * @brief          : DW3000 initialization, diagnostics, and TX service
+  * @brief          : DW3000 initialization, TX, RX, and CIR service
   ******************************************************************************
   */
 
@@ -19,11 +19,24 @@
 #define UWB_PERIODIC_TX_INTERVAL_US  UINT32_C(1000000)
 #define UWB_TX_POLL_INTERVAL_MS      UINT32_C(1)
 #define UWB_TX_TIMEOUT_MARGIN_MS     UINT32_C(100)
+#define UWB_RX_POLL_INTERVAL_MS      UINT32_C(1)
+
+#ifndef HOPWINS_UWB_CIR_SAMPLE_COUNT
+/* Zero exports the complete Ipatov accumulator. */
+#define HOPWINS_UWB_CIR_SAMPLE_COUNT 0U
+#endif
+
+#ifndef HOPWINS_UWB_CIR_PRE_FIRST_PATH_SAMPLES
+#define HOPWINS_UWB_CIR_PRE_FIRST_PATH_SAMPLES 64U
+#endif
 
 static const dw3000_platform_t *s_platform;
 static uwb_service_state_t s_state;
 static uwb_profile_t s_profile;
 static uint8_t s_tx_frame[UWB_TX_FRAME_LEN];
+static uint8_t s_rx_frame[DW3000_RX_FRAME_MAX_LEN];
+static uint8_t
+    s_cir_data[DW3000_CIR_MAX_SAMPLES * DW3000_CIR_SAMPLE_BYTES];
 static uint32_t s_interval_device_time;
 static uint32_t s_next_transmit_time;
 static uint32_t s_next_sequence;
@@ -33,6 +46,8 @@ static uint32_t s_next_poll_time_ms;
 static uint32_t s_transmit_deadline_ms;
 static uwb_service_tx_event_t s_tx_event;
 static bool s_tx_event_pending;
+static uwb_service_cir_capture_t s_cir_capture;
+static uint32_t s_next_capture_id;
 
 static void write_u16_le(uint8_t *destination, uint16_t value);
 static void write_u32_le(uint8_t *destination, uint32_t value);
@@ -45,6 +60,13 @@ static void publish_tx_error(
     uint32_t scheduled_time);
 static dw3000_status_t schedule_next_transmit(void);
 static void resynchronize_transmit_schedule(void);
+static void process_periodic_transmit(void);
+static void process_cir_receive(void);
+static void restart_cir_receive(void);
+static uint16_t select_cir_sample_offset(
+    uint16_t total_samples,
+    uint16_t capture_samples,
+    uint16_t first_path_index_q10_6);
 
 dw3000_status_t uwb_service_init(const dw3000_platform_t *platform)
 {
@@ -56,6 +78,8 @@ dw3000_status_t uwb_service_init(const dw3000_platform_t *platform)
   };
   s_tx_event = (uwb_service_tx_event_t){0};
   s_tx_event_pending = false;
+  s_cir_capture = (uwb_service_cir_capture_t){0};
+  s_next_capture_id = 0U;
   s_interval_device_time = 0U;
   s_next_transmit_time = 0U;
   s_next_sequence = 0U;
@@ -102,6 +126,9 @@ dw3000_status_t uwb_service_start_periodic_transmit(
   if ((s_platform == NULL) || (s_state.init_status != DW3000_STATUS_OK)) {
     return DW3000_STATUS_NOT_READY;
   }
+  if (s_state.cir_receive_enabled) {
+    return DW3000_STATUS_BUSY;
+  }
 
   s_profile = *profile;
   s_state.radio_config = profile->radio;
@@ -130,6 +157,7 @@ dw3000_status_t uwb_service_start_periodic_transmit(
 
   s_state.periodic_tx_enabled = true;
   s_state.transmit_pending = false;
+  s_state.mode = UWB_SERVICE_MODE_PERIODIC_TX;
   s_next_sequence = 0U;
   s_next_transmit_time =
       (current_time + s_interval_device_time) & ~UINT32_C(1);
@@ -143,9 +171,120 @@ void uwb_service_stop_periodic_transmit(void)
   }
   s_state.periodic_tx_enabled = false;
   s_state.transmit_pending = false;
+  if (s_state.mode == UWB_SERVICE_MODE_PERIODIC_TX) {
+    s_state.mode = UWB_SERVICE_MODE_IDLE;
+  }
+}
+
+dw3000_status_t uwb_service_start_cir_receive(
+    const uwb_profile_t *profile)
+{
+  uint16_t total_samples;
+  uint32_t requested_samples = HOPWINS_UWB_CIR_SAMPLE_COUNT;
+  dw3000_status_t status;
+
+  if (profile == NULL) {
+    return DW3000_STATUS_BAD_ARG;
+  }
+  if ((s_platform == NULL) || (s_state.init_status != DW3000_STATUS_OK)) {
+    return DW3000_STATUS_NOT_READY;
+  }
+  if (s_state.periodic_tx_enabled) {
+    return DW3000_STATUS_BUSY;
+  }
+
+  s_profile = *profile;
+  s_state.radio_config = profile->radio;
+  s_state.config_status = dw3000_configure_radio(
+      &s_state.device,
+      &profile->radio);
+  if (s_state.config_status != DW3000_STATUS_OK) {
+    return s_state.config_status;
+  }
+
+  total_samples = dw3000_get_cir_sample_count(&s_state.device);
+  if (total_samples == 0U) {
+    s_state.config_status = DW3000_STATUS_CIR_ERROR;
+    return s_state.config_status;
+  }
+  if ((requested_samples == 0U) || (requested_samples > total_samples)) {
+    requested_samples = total_samples;
+  }
+
+  s_state.mode = UWB_SERVICE_MODE_RX_CIR;
+  s_state.cir_receive_enabled = true;
+  s_state.receive_pending = false;
+  s_state.cir_capture_ready = false;
+  s_state.cir_total_samples = total_samples;
+  s_state.cir_capture_samples = (uint16_t)requested_samples;
+  s_cir_capture = (uwb_service_cir_capture_t){0};
+  s_next_capture_id = 0U;
+
+  status = dw3000_receive_start(&s_state.device);
+  if (status != DW3000_STATUS_OK) {
+    s_state.cir_receive_enabled = false;
+    s_state.mode = UWB_SERVICE_MODE_IDLE;
+    s_state.config_status = status;
+    return status;
+  }
+
+  s_state.receive_pending = true;
+  s_next_poll_time_ms = s_platform->get_time_ms();
+  return DW3000_STATUS_OK;
+}
+
+void uwb_service_stop_cir_receive(void)
+{
+  if (s_state.receive_pending || s_state.cir_capture_ready) {
+    (void)dw3000_abort_receive(&s_state.device);
+  }
+
+  s_state.cir_receive_enabled = false;
+  s_state.receive_pending = false;
+  s_state.cir_capture_ready = false;
+  if (s_state.mode == UWB_SERVICE_MODE_RX_CIR) {
+    s_state.mode = UWB_SERVICE_MODE_IDLE;
+  }
+}
+
+const uwb_service_cir_capture_t *uwb_service_get_cir_capture(void)
+{
+  return s_state.cir_capture_ready ? &s_cir_capture : NULL;
+}
+
+dw3000_status_t uwb_service_release_cir_capture(void)
+{
+  dw3000_status_t status;
+
+  if (!s_state.cir_receive_enabled || !s_state.cir_capture_ready) {
+    return DW3000_STATUS_NOT_READY;
+  }
+
+  s_state.cir_capture_ready = false;
+  s_cir_capture = (uwb_service_cir_capture_t){0};
+  status = dw3000_receive_start(&s_state.device);
+  if (status != DW3000_STATUS_OK) {
+    s_state.receive_error_count++;
+    s_state.receive_pending = false;
+    return status;
+  }
+
+  s_state.receive_pending = true;
+  s_next_poll_time_ms = s_platform->get_time_ms();
+  return DW3000_STATUS_OK;
 }
 
 void uwb_service_process(void)
+{
+  if (s_state.cir_receive_enabled) {
+    process_cir_receive();
+    return;
+  }
+
+  process_periodic_transmit();
+}
+
+static void process_periodic_transmit(void)
 {
   dw3000_tx_result_t result;
   dw3000_status_t status;
@@ -205,6 +344,125 @@ void uwb_service_process(void)
   s_next_transmit_time =
       (s_active_scheduled_time + s_interval_device_time) &
       ~UINT32_C(1);
+}
+
+static void process_cir_receive(void)
+{
+  dw3000_rx_result_t result;
+  dw3000_cir_diagnostic_t diagnostic;
+  dw3000_status_t status;
+  uint32_t current_time_ms;
+  uint16_t sample_offset;
+  uint16_t sample_count;
+
+  if (s_state.cir_capture_ready) {
+    return;
+  }
+  if (!s_state.receive_pending) {
+    restart_cir_receive();
+    return;
+  }
+
+  current_time_ms = s_platform->get_time_ms();
+  if ((int32_t)(current_time_ms - s_next_poll_time_ms) < 0) {
+    return;
+  }
+  s_next_poll_time_ms = current_time_ms + UWB_RX_POLL_INTERVAL_MS;
+
+  status = dw3000_poll_receive(
+      &s_state.device,
+      s_rx_frame,
+      (uint16_t)sizeof(s_rx_frame),
+      &result);
+  if (status != DW3000_STATUS_OK) {
+    s_state.receive_pending = false;
+    s_state.receive_error_count++;
+    if (status == DW3000_STATUS_RX_CRC_ERROR) {
+      s_state.receive_crc_error_count++;
+    }
+    return;
+  }
+  if (!result.complete) {
+    return;
+  }
+
+  s_state.receive_pending = false;
+  status = dw3000_read_cir_diagnostics(
+      &s_state.device,
+      &diagnostic);
+  if (status != DW3000_STATUS_OK) {
+    s_state.receive_error_count++;
+    return;
+  }
+
+  sample_count = s_state.cir_capture_samples;
+  sample_offset = select_cir_sample_offset(
+      s_state.cir_total_samples,
+      sample_count,
+      diagnostic.first_path_index);
+  status = dw3000_read_cir_48b(
+      &s_state.device,
+      sample_offset,
+      sample_count,
+      s_cir_data);
+  if (status != DW3000_STATUS_OK) {
+    s_state.receive_error_count++;
+    return;
+  }
+
+  s_cir_capture = (uwb_service_cir_capture_t){
+    .capture_id = s_next_capture_id++,
+    .frame = s_rx_frame,
+    .frame_len = result.frame_len,
+    .receive_timestamp = result.timestamp,
+    .system_status = result.system_status,
+    .clock_offset = result.clock_offset,
+    .carrier_integrator = result.carrier_integrator,
+    .ranging_frame = result.ranging_frame,
+    .diagnostic = diagnostic,
+    .cir_data = s_cir_data,
+    .cir_data_len = (uint32_t)sample_count * DW3000_CIR_SAMPLE_BYTES,
+    .cir_sample_offset = sample_offset,
+    .cir_sample_count = sample_count,
+    .cir_sample_bytes = DW3000_CIR_SAMPLE_BYTES,
+  };
+  s_state.received_count++;
+  s_state.cir_capture_ready = true;
+}
+
+static void restart_cir_receive(void)
+{
+  dw3000_status_t status = dw3000_receive_start(&s_state.device);
+
+  if (status == DW3000_STATUS_OK) {
+    s_state.receive_pending = true;
+    s_next_poll_time_ms = s_platform->get_time_ms();
+  } else {
+    s_state.receive_error_count++;
+  }
+}
+
+static uint16_t select_cir_sample_offset(
+    uint16_t total_samples,
+    uint16_t capture_samples,
+    uint16_t first_path_index_q10_6)
+{
+  uint32_t first_path_sample = first_path_index_q10_6 >> 6U;
+  uint32_t pre_samples = HOPWINS_UWB_CIR_PRE_FIRST_PATH_SAMPLES;
+  uint32_t offset;
+
+  if (capture_samples >= total_samples) {
+    return 0U;
+  }
+
+  offset = (first_path_sample > pre_samples)
+      ? (first_path_sample - pre_samples)
+      : 0U;
+  if ((offset + capture_samples) > total_samples) {
+    offset = total_samples - capture_samples;
+  }
+
+  return (uint16_t)offset;
 }
 
 bool uwb_service_take_tx_event(uwb_service_tx_event_t *event)
