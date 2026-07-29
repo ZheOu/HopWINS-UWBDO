@@ -41,17 +41,26 @@ typedef struct {
   uint32_t capture_id;
   const uint8_t *frame;
   uint16_t frame_len;
+  uint32_t mcu_system_time_ms;
+  uint32_t reference_time_ms;
+  bool reference_time_valid;
   uint64_t receive_timestamp;
   uint32_t system_status;
+  dw3000_rx_register_snapshot_t register_snapshot;
+  dw3000_status_t register_status;
   int16_t clock_offset;
   int32_t carrier_integrator;
   bool ranging_frame;
   dw3000_cir_diagnostic_t diagnostic;
+  dw3000_status_t diagnostic_status;
   const uint8_t *cir_data;
   uint32_t cir_data_len;
   uint16_t cir_sample_offset;
   uint16_t cir_sample_count;
   uint8_t cir_sample_bytes;
+  dw3000_status_t cir_status;
+  dw3000_rf_port_t rf_port;
+  uint16_t rx_antenna_delay;
 } uwb_service_cir_capture_t;
 
 typedef struct {
@@ -68,8 +77,12 @@ typedef struct {
   uint32_t received_count;
   uint32_t receive_error_count;
   uint32_t receive_crc_error_count;
+  uint32_t receive_recovery_count;
+  uint32_t receive_watchdog_count;
+  uint32_t capture_queue_full_count;
   uint16_t cir_total_samples;
   uint16_t cir_capture_samples;
+  uint8_t queued_capture_count;
   uwb_service_mode_t mode;
   bool periodic_tx_enabled;
   bool transmit_pending;

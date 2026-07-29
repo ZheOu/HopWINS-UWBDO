@@ -73,6 +73,11 @@ typedef enum {
   DW3000_STS_MODE_2,
 } dw3000_sts_mode_t;
 
+typedef enum {
+  DW3000_RF_PORT_1 = 1,
+  DW3000_RF_PORT_2 = 2,
+} dw3000_rf_port_t;
+
 typedef struct dw3000_platform {
   int32_t (*hardware_reset)(void);
   int32_t (*spi_set_slow_rate)(void);
@@ -92,6 +97,7 @@ typedef struct dw3000_platform {
   void (*delay_ms)(uint32_t delay_ms);
   void (*delay_us)(uint32_t delay_us);
   uint32_t (*get_time_ms)(void);
+  int32_t (*get_reference_time_ms)(uint32_t *timestamp_ms);
   int32_t (*lock)(void);
   void (*unlock)(int32_t lock_state);
 } dw3000_platform_t;
@@ -119,6 +125,7 @@ typedef struct {
   uint16_t tx_pulse_generator_count;
   uint16_t tx_antenna_delay;
   uint16_t rx_antenna_delay;
+  dw3000_rf_port_t rf_port;
 } dw3000_radio_config_t;
 
 typedef struct {
@@ -135,6 +142,15 @@ typedef struct {
   int16_t clock_offset;
   int32_t carrier_integrator;
 } dw3000_rx_result_t;
+
+typedef struct {
+  uint32_t system_time_hi32;
+  uint32_t system_status_high;
+  uint32_t rx_finfo;
+  uint32_t cia_diag_0;
+  uint32_t cia_diag_1;
+  uint8_t dgc_decision;
+} dw3000_rx_register_snapshot_t;
 
 typedef struct {
   uint32_t power;
@@ -199,6 +215,9 @@ dw3000_status_t dw3000_poll_receive(
     uint8_t *frame,
     uint16_t frame_capacity,
     dw3000_rx_result_t *result);
+dw3000_status_t dw3000_read_rx_register_snapshot(
+    const dw3000_device_t *device,
+    dw3000_rx_register_snapshot_t *snapshot);
 uint16_t dw3000_get_cir_sample_count(
     const dw3000_device_t *device);
 dw3000_status_t dw3000_read_cir_diagnostics(

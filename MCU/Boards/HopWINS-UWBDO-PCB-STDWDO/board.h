@@ -120,6 +120,7 @@ typedef struct {
 } board_components_t;
 
 void board_init(void);
+uint32_t board_get_time_ms(void);
 const board_capabilities_t *board_get_capabilities(void);
 const board_components_t *board_get_components(void);
 const struct dw3000_platform *board_uwb_get_platform(void);

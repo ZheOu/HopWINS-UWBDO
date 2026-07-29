@@ -24,6 +24,16 @@ MCU/*.list
 # User-specific CMake overrides
 MCU/CMakeUserPresets.json
 
+# Python virtual environments, caches, and local captures
+Python/.venv/
+Python/**/__pycache__/
+Python/.pytest_cache/
+Python/.ruff_cache/
+Python/.mypy_cache/
+Python/**/*.egg-info/
+Python/captures/
+Python/config.local.ini
+
 # STM32CubeMX scratch data
 MCU/mx.scratch/
 

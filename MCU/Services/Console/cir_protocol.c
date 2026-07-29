@@ -9,8 +9,8 @@
 
 #include <string.h>
 
-#define CIR_PROTOCOL_VERSION             1U
-#define CIR_PROTOCOL_HEADER_LEN          60U
+#define CIR_PROTOCOL_VERSION             2U
+#define CIR_PROTOCOL_HEADER_LEN          128U
 #define CIR_PROTOCOL_CRC_LEN             4U
 #define CIR_PROTOCOL_MAX_PAYLOAD_LEN     DW3000_RX_FRAME_MAX_LEN
 #define CIR_PROTOCOL_MAX_PACKET_LEN \
@@ -20,8 +20,13 @@
 #define CIR_PROTOCOL_FLAG_RX_CRC_GOOD    UINT16_C(0x0001)
 #define CIR_PROTOCOL_FLAG_RANGING_FRAME  UINT16_C(0x0002)
 #define CIR_PROTOCOL_FLAG_CIR_FULL_48BIT UINT16_C(0x0004)
+#define CIR_PROTOCOL_FLAG_DIAGNOSTIC_OK  UINT16_C(0x0008)
+#define CIR_PROTOCOL_FLAG_CIR_VALID      UINT16_C(0x0010)
+#define CIR_PROTOCOL_FLAG_REGISTERS_OK   UINT16_C(0x0020)
+#define CIR_PROTOCOL_FLAG_REFERENCE_TIME UINT16_C(0x0040)
 
 #define CIR_PROTOCOL_FORMAT_I24_Q24_LE   1U
+#define CIR_PROTOCOL_REFERENCE_TIM2_MS   1U
 
 static uint8_t s_packet[CIR_PROTOCOL_MAX_PACKET_LEN];
 
@@ -102,9 +107,7 @@ static board_status_t send_packet(
     const uint8_t *payload,
     uint16_t payload_len)
 {
-  uint16_t flags =
-      CIR_PROTOCOL_FLAG_RX_CRC_GOOD |
-      CIR_PROTOCOL_FLAG_CIR_FULL_48BIT;
+  uint16_t flags = CIR_PROTOCOL_FLAG_RX_CRC_GOOD;
   uint32_t packet_len =
       CIR_PROTOCOL_HEADER_LEN + payload_len + CIR_PROTOCOL_CRC_LEN;
   uint32_t crc;
@@ -121,7 +124,21 @@ static board_status_t send_packet(
   if (capture->ranging_frame) {
     flags |= CIR_PROTOCOL_FLAG_RANGING_FRAME;
   }
+  if (capture->diagnostic_status == DW3000_STATUS_OK) {
+    flags |= CIR_PROTOCOL_FLAG_DIAGNOSTIC_OK;
+  }
+  if (capture->cir_status == DW3000_STATUS_OK) {
+    flags |= CIR_PROTOCOL_FLAG_CIR_VALID |
+             CIR_PROTOCOL_FLAG_CIR_FULL_48BIT;
+  }
+  if (capture->register_status == DW3000_STATUS_OK) {
+    flags |= CIR_PROTOCOL_FLAG_REGISTERS_OK;
+  }
+  if (capture->reference_time_valid) {
+    flags |= CIR_PROTOCOL_FLAG_REFERENCE_TIME;
+  }
 
+  memset(s_packet, 0, CIR_PROTOCOL_HEADER_LEN);
   memcpy(&s_packet[0], "HCIR", 4U);
   s_packet[4] = CIR_PROTOCOL_VERSION;
   s_packet[5] = (uint8_t)packet_type;
@@ -153,6 +170,44 @@ static board_status_t send_packet(
   write_u16_le(
       &s_packet[58],
       (uint16_t)capture->diagnostic.first_path_power_q8_8);
+  s_packet[60] = (uint8_t)capture->rf_port;
+  s_packet[61] = capture->reference_time_valid
+                     ? CIR_PROTOCOL_REFERENCE_TIM2_MS
+                     : 0U;
+  write_u16_le(&s_packet[62], capture->rx_antenna_delay);
+  write_u32_le(&s_packet[64], capture->mcu_system_time_ms);
+  write_u32_le(&s_packet[68], capture->reference_time_ms);
+  write_u32_le(
+      &s_packet[72],
+      capture->register_snapshot.system_time_hi32);
+  write_u32_le(
+      &s_packet[76],
+      capture->register_snapshot.system_status_high);
+  write_u32_le(&s_packet[80], capture->register_snapshot.rx_finfo);
+  write_u32_le(&s_packet[84], capture->register_snapshot.cia_diag_0);
+  write_u32_le(&s_packet[88], capture->register_snapshot.cia_diag_1);
+  write_u32_le(&s_packet[92], capture->diagnostic.power);
+  write_u32_le(
+      &s_packet[96],
+      capture->diagnostic.first_path_amplitude_1);
+  write_u32_le(
+      &s_packet[100],
+      capture->diagnostic.first_path_amplitude_2);
+  write_u32_le(
+      &s_packet[104],
+      capture->diagnostic.first_path_amplitude_3);
+  write_u32_le(&s_packet[108], capture->diagnostic.peak_amplitude);
+  write_u32_le(
+      &s_packet[112],
+      capture->diagnostic.first_path_threshold);
+  write_u16_le(
+      &s_packet[116],
+      capture->diagnostic.early_first_path_index);
+  s_packet[118] = capture->diagnostic.early_first_path_confidence;
+  s_packet[119] = capture->register_snapshot.dgc_decision;
+  s_packet[120] = (uint8_t)(int8_t)capture->diagnostic_status;
+  s_packet[121] = (uint8_t)(int8_t)capture->cir_status;
+  s_packet[122] = (uint8_t)(int8_t)capture->register_status;
 
   if (payload_len != 0U) {
     memcpy(&s_packet[CIR_PROTOCOL_HEADER_LEN], payload, payload_len);

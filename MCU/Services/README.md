@@ -80,9 +80,13 @@ the same firmware to pause DO and run occasional TWR calibration later.
 ## UWB RX and CIR export
 
 The `DO_FOLLOWER` role continuously receives UWB frames and captures CIR.
-After a CRC-correct frame, `uwb_service.c` reads the frame, RX timestamp,
-carrier and clock offsets, CIA diagnostics, and the Ipatov accumulator before
-re-enabling RX.
+After a CRC-correct frame, `uwb_service.c` records MCU SysTick, the external
+TIM2 reference counter, the DW3000 RX and system timestamps, RF port,
+`SYS_STATUS`, `RX_FINFO`, CIA status registers, carrier/clock offsets, Ipatov
+diagnostics, and the accumulator before re-enabling RX. The radio is forced to
+RF Port 1 for all current TX and RX operations. A valid frame is still exported
+when optional register, diagnostic, or CIR reads fail; their signed status
+fields identify which metadata is unavailable.
 
 `HOPWINS_UWB_CIR_SAMPLE_COUNT` controls the capture size. Zero exports the
 complete accumulator (1016 samples for the default PRF64 code). A smaller value
@@ -93,6 +97,23 @@ Console exports one frame packet followed by CRC-protected CIR chunks through
 the existing USART1 DMA queue. See
 [`Console/CIR_PROTOCOL.md`](Console/CIR_PROTOCOL.md) for the binary layout,
 CRC parameters, and throughput budget.
+
+RX uses two frame/CIR capture slots. After the driver has copied one frame,
+register snapshot, diagnostics, and accumulator data, it immediately re-arms
+the DW3000 into the other slot while Console exports the first. RX pauses only
+when both slots are queued, which is reported by the `QFULL` health counter.
+This removes the full UART wire time from the normal receive blind interval.
+
+The Follower retries failed UWB initialization once per second. During normal
+operation, RX errors are re-armed with a short backoff; a five-second no-frame
+watchdog restarts RX, and three consecutive watchdog restarts request a full
+UWB reinitialization. `UWB RX HEALTH` reports receive, CRC-error, recovery,
+watchdog, queue-full, and UART-DMA error counters every five seconds.
+
+UART DMA has an independent 100 ms progress timeout. A timed-out transfer is
+aborted and retried from its ring-buffer tail. The host HCIR parser discards
+any partial duplicate prefix by length and CRC before resynchronizing at the
+next valid magic.
 
 ## Product configuration
 

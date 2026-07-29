@@ -20,6 +20,11 @@
 #define UWB_TX_POLL_INTERVAL_MS      UINT32_C(1)
 #define UWB_TX_TIMEOUT_MARGIN_MS     UINT32_C(100)
 #define UWB_RX_POLL_INTERVAL_MS      UINT32_C(1)
+#define UWB_RX_RESTART_INTERVAL_MS   UINT32_C(20)
+#define UWB_RX_NO_FRAME_TIMEOUT_MS   UINT32_C(5000)
+#define UWB_RX_MAX_START_FAILURES    8U
+#define UWB_RX_MAX_WATCHDOG_RESTARTS 3U
+#define UWB_RX_CAPTURE_SLOT_COUNT    2U
 
 #ifndef HOPWINS_UWB_CIR_SAMPLE_COUNT
 /* Zero exports the complete Ipatov accumulator. */
@@ -34,9 +39,14 @@ static const dw3000_platform_t *s_platform;
 static uwb_service_state_t s_state;
 static uwb_profile_t s_profile;
 static uint8_t s_tx_frame[UWB_TX_FRAME_LEN];
-static uint8_t s_rx_frame[DW3000_RX_FRAME_MAX_LEN];
-static uint8_t
-    s_cir_data[DW3000_CIR_MAX_SAMPLES * DW3000_CIR_SAMPLE_BYTES];
+typedef struct {
+  uint8_t frame[DW3000_RX_FRAME_MAX_LEN];
+  uint8_t cir_data[DW3000_CIR_MAX_SAMPLES * DW3000_CIR_SAMPLE_BYTES];
+  uwb_service_cir_capture_t capture;
+} uwb_service_capture_slot_t;
+
+static uwb_service_capture_slot_t
+    s_capture_slots[UWB_RX_CAPTURE_SLOT_COUNT];
 static uint32_t s_interval_device_time;
 static uint32_t s_next_transmit_time;
 static uint32_t s_next_sequence;
@@ -44,10 +54,16 @@ static uint32_t s_active_sequence;
 static uint32_t s_active_scheduled_time;
 static uint32_t s_next_poll_time_ms;
 static uint32_t s_transmit_deadline_ms;
+static uint32_t s_receive_started_time_ms;
+static uint32_t s_next_receive_restart_time_ms;
 static uwb_service_tx_event_t s_tx_event;
 static bool s_tx_event_pending;
-static uwb_service_cir_capture_t s_cir_capture;
 static uint32_t s_next_capture_id;
+static uint8_t s_capture_read_index;
+static uint8_t s_capture_write_index;
+static uint8_t s_capture_count;
+static uint8_t s_receive_start_failure_count;
+static uint8_t s_watchdog_restarts_without_frame;
 
 static void write_u16_le(uint8_t *destination, uint16_t value);
 static void write_u32_le(uint8_t *destination, uint32_t value);
@@ -62,7 +78,8 @@ static dw3000_status_t schedule_next_transmit(void);
 static void resynchronize_transmit_schedule(void);
 static void process_periodic_transmit(void);
 static void process_cir_receive(void);
-static void restart_cir_receive(void);
+static dw3000_status_t restart_cir_receive(bool recovery);
+static void reset_capture_queue(void);
 static uint16_t select_cir_sample_offset(
     uint16_t total_samples,
     uint16_t capture_samples,
@@ -78,7 +95,7 @@ dw3000_status_t uwb_service_init(const dw3000_platform_t *platform)
   };
   s_tx_event = (uwb_service_tx_event_t){0};
   s_tx_event_pending = false;
-  s_cir_capture = (uwb_service_cir_capture_t){0};
+  reset_capture_queue();
   s_next_capture_id = 0U;
   s_interval_device_time = 0U;
   s_next_transmit_time = 0U;
@@ -87,6 +104,10 @@ dw3000_status_t uwb_service_init(const dw3000_platform_t *platform)
   s_active_scheduled_time = 0U;
   s_next_poll_time_ms = 0U;
   s_transmit_deadline_ms = 0U;
+  s_receive_started_time_ms = 0U;
+  s_next_receive_restart_time_ms = 0U;
+  s_receive_start_failure_count = 0U;
+  s_watchdog_restarts_without_frame = 0U;
 
   if (s_platform == NULL) {
     return s_state.init_status;
@@ -217,10 +238,12 @@ dw3000_status_t uwb_service_start_cir_receive(
   s_state.cir_capture_ready = false;
   s_state.cir_total_samples = total_samples;
   s_state.cir_capture_samples = (uint16_t)requested_samples;
-  s_cir_capture = (uwb_service_cir_capture_t){0};
+  reset_capture_queue();
   s_next_capture_id = 0U;
+  s_receive_start_failure_count = 0U;
+  s_watchdog_restarts_without_frame = 0U;
 
-  status = dw3000_receive_start(&s_state.device);
+  status = restart_cir_receive(false);
   if (status != DW3000_STATUS_OK) {
     s_state.cir_receive_enabled = false;
     s_state.mode = UWB_SERVICE_MODE_IDLE;
@@ -228,8 +251,6 @@ dw3000_status_t uwb_service_start_cir_receive(
     return status;
   }
 
-  s_state.receive_pending = true;
-  s_next_poll_time_ms = s_platform->get_time_ms();
   return DW3000_STATUS_OK;
 }
 
@@ -242,6 +263,7 @@ void uwb_service_stop_cir_receive(void)
   s_state.cir_receive_enabled = false;
   s_state.receive_pending = false;
   s_state.cir_capture_ready = false;
+  reset_capture_queue();
   if (s_state.mode == UWB_SERVICE_MODE_RX_CIR) {
     s_state.mode = UWB_SERVICE_MODE_IDLE;
   }
@@ -249,28 +271,28 @@ void uwb_service_stop_cir_receive(void)
 
 const uwb_service_cir_capture_t *uwb_service_get_cir_capture(void)
 {
-  return s_state.cir_capture_ready ? &s_cir_capture : NULL;
+  return (s_capture_count != 0U)
+             ? &s_capture_slots[s_capture_read_index].capture
+             : NULL;
 }
 
 dw3000_status_t uwb_service_release_cir_capture(void)
 {
-  dw3000_status_t status;
-
-  if (!s_state.cir_receive_enabled || !s_state.cir_capture_ready) {
+  if (s_capture_count == 0U) {
     return DW3000_STATUS_NOT_READY;
   }
 
-  s_state.cir_capture_ready = false;
-  s_cir_capture = (uwb_service_cir_capture_t){0};
-  status = dw3000_receive_start(&s_state.device);
-  if (status != DW3000_STATUS_OK) {
-    s_state.receive_error_count++;
-    s_state.receive_pending = false;
-    return status;
-  }
+  s_capture_slots[s_capture_read_index].capture =
+      (uwb_service_cir_capture_t){0};
+  s_capture_read_index =
+      (uint8_t)((s_capture_read_index + 1U) % UWB_RX_CAPTURE_SLOT_COUNT);
+  s_capture_count--;
+  s_state.queued_capture_count = s_capture_count;
+  s_state.cir_capture_ready = s_capture_count != 0U;
 
-  s_state.receive_pending = true;
-  s_next_poll_time_ms = s_platform->get_time_ms();
+  if (s_state.cir_receive_enabled && !s_state.receive_pending) {
+    return restart_cir_receive(false);
+  }
   return DW3000_STATUS_OK;
 }
 
@@ -348,31 +370,57 @@ static void process_periodic_transmit(void)
 
 static void process_cir_receive(void)
 {
+  uwb_service_capture_slot_t *slot;
   dw3000_rx_result_t result;
-  dw3000_cir_diagnostic_t diagnostic;
+  dw3000_cir_diagnostic_t diagnostic = {0};
+  dw3000_rx_register_snapshot_t register_snapshot = {0};
   dw3000_status_t status;
+  dw3000_status_t diagnostic_status;
+  dw3000_status_t cir_status;
+  dw3000_status_t register_status;
   uint32_t current_time_ms;
+  uint32_t reference_time_ms = 0U;
   uint16_t sample_offset;
   uint16_t sample_count;
-
-  if (s_state.cir_capture_ready) {
-    return;
-  }
-  if (!s_state.receive_pending) {
-    restart_cir_receive();
-    return;
-  }
+  bool reference_time_valid = false;
 
   current_time_ms = s_platform->get_time_ms();
+  if (!s_state.receive_pending) {
+    if ((s_capture_count < UWB_RX_CAPTURE_SLOT_COUNT) &&
+        ((int32_t)(current_time_ms - s_next_receive_restart_time_ms) >= 0)) {
+      (void)restart_cir_receive(true);
+    }
+    return;
+  }
+
+  if ((uint32_t)(current_time_ms - s_receive_started_time_ms) >=
+      UWB_RX_NO_FRAME_TIMEOUT_MS) {
+    (void)dw3000_abort_receive(&s_state.device);
+    s_state.receive_pending = false;
+    s_state.receive_watchdog_count++;
+    s_watchdog_restarts_without_frame++;
+    if (s_watchdog_restarts_without_frame >=
+        UWB_RX_MAX_WATCHDOG_RESTARTS) {
+      s_state.cir_receive_enabled = false;
+      s_state.mode = UWB_SERVICE_MODE_IDLE;
+      s_state.config_status = DW3000_STATUS_TIMEOUT;
+      return;
+    }
+    s_next_receive_restart_time_ms = current_time_ms;
+    (void)restart_cir_receive(true);
+    return;
+  }
+
   if ((int32_t)(current_time_ms - s_next_poll_time_ms) < 0) {
     return;
   }
   s_next_poll_time_ms = current_time_ms + UWB_RX_POLL_INTERVAL_MS;
+  slot = &s_capture_slots[s_capture_write_index];
 
   status = dw3000_poll_receive(
       &s_state.device,
-      s_rx_frame,
-      (uint16_t)sizeof(s_rx_frame),
+      slot->frame,
+      (uint16_t)sizeof(slot->frame),
       &result);
   if (status != DW3000_STATUS_OK) {
     s_state.receive_pending = false;
@@ -380,6 +428,8 @@ static void process_cir_receive(void)
     if (status == DW3000_STATUS_RX_CRC_ERROR) {
       s_state.receive_crc_error_count++;
     }
+    s_next_receive_restart_time_ms =
+        current_time_ms + UWB_RX_RESTART_INTERVAL_MS;
     return;
   }
   if (!result.complete) {
@@ -387,59 +437,136 @@ static void process_cir_receive(void)
   }
 
   s_state.receive_pending = false;
-  status = dw3000_read_cir_diagnostics(
+  s_watchdog_restarts_without_frame = 0U;
+  if (s_platform->get_reference_time_ms != NULL) {
+    reference_time_valid =
+        s_platform->get_reference_time_ms(&reference_time_ms) == 0;
+  }
+
+  register_status = dw3000_read_rx_register_snapshot(
+      &s_state.device,
+      &register_snapshot);
+  diagnostic_status = dw3000_read_cir_diagnostics(
       &s_state.device,
       &diagnostic);
-  if (status != DW3000_STATUS_OK) {
+  cir_status = diagnostic_status;
+  sample_offset = 0U;
+  sample_count = 0U;
+
+  if (diagnostic_status == DW3000_STATUS_OK) {
+    sample_count = s_state.cir_capture_samples;
+    sample_offset = select_cir_sample_offset(
+        s_state.cir_total_samples,
+        sample_count,
+        diagnostic.first_path_index);
+    cir_status = dw3000_read_cir_48b(
+        &s_state.device,
+        sample_offset,
+        sample_count,
+        slot->cir_data);
+  }
+  if ((register_status != DW3000_STATUS_OK) ||
+      (diagnostic_status != DW3000_STATUS_OK) ||
+      (cir_status != DW3000_STATUS_OK)) {
     s_state.receive_error_count++;
-    return;
   }
 
-  sample_count = s_state.cir_capture_samples;
-  sample_offset = select_cir_sample_offset(
-      s_state.cir_total_samples,
-      sample_count,
-      diagnostic.first_path_index);
-  status = dw3000_read_cir_48b(
-      &s_state.device,
-      sample_offset,
-      sample_count,
-      s_cir_data);
-  if (status != DW3000_STATUS_OK) {
-    s_state.receive_error_count++;
-    return;
-  }
-
-  s_cir_capture = (uwb_service_cir_capture_t){
+  slot->capture = (uwb_service_cir_capture_t){
     .capture_id = s_next_capture_id++,
-    .frame = s_rx_frame,
+    .frame = slot->frame,
     .frame_len = result.frame_len,
+    .mcu_system_time_ms = current_time_ms,
+    .reference_time_ms = reference_time_ms,
+    .reference_time_valid = reference_time_valid,
     .receive_timestamp = result.timestamp,
     .system_status = result.system_status,
+    .register_snapshot = register_snapshot,
+    .register_status = register_status,
     .clock_offset = result.clock_offset,
     .carrier_integrator = result.carrier_integrator,
     .ranging_frame = result.ranging_frame,
     .diagnostic = diagnostic,
-    .cir_data = s_cir_data,
-    .cir_data_len = (uint32_t)sample_count * DW3000_CIR_SAMPLE_BYTES,
+    .diagnostic_status = diagnostic_status,
+    .cir_data =
+        (cir_status == DW3000_STATUS_OK) ? slot->cir_data : NULL,
+    .cir_data_len =
+        (cir_status == DW3000_STATUS_OK)
+            ? (uint32_t)sample_count * DW3000_CIR_SAMPLE_BYTES
+            : 0U,
     .cir_sample_offset = sample_offset,
-    .cir_sample_count = sample_count,
-    .cir_sample_bytes = DW3000_CIR_SAMPLE_BYTES,
+    .cir_sample_count =
+        (cir_status == DW3000_STATUS_OK) ? sample_count : 0U,
+    .cir_sample_bytes =
+        (cir_status == DW3000_STATUS_OK)
+            ? DW3000_CIR_SAMPLE_BYTES
+            : 0U,
+    .cir_status = cir_status,
+    .rf_port = s_state.radio_config.rf_port,
+    .rx_antenna_delay = s_state.radio_config.rx_antenna_delay,
   };
+  s_capture_write_index =
+      (uint8_t)((s_capture_write_index + 1U) % UWB_RX_CAPTURE_SLOT_COUNT);
+  s_capture_count++;
   s_state.received_count++;
-  s_state.cir_capture_ready = true;
+  s_state.queued_capture_count = s_capture_count;
+  s_state.cir_capture_ready = s_capture_count != 0U;
+
+  if (s_capture_count < UWB_RX_CAPTURE_SLOT_COUNT) {
+    (void)restart_cir_receive(false);
+  } else {
+    s_state.capture_queue_full_count++;
+  }
 }
 
-static void restart_cir_receive(void)
+static dw3000_status_t restart_cir_receive(bool recovery)
 {
-  dw3000_status_t status = dw3000_receive_start(&s_state.device);
+  uint32_t current_time_ms = s_platform->get_time_ms();
+  dw3000_status_t status;
+
+  if (!s_state.cir_receive_enabled ||
+      (s_capture_count >= UWB_RX_CAPTURE_SLOT_COUNT)) {
+    return DW3000_STATUS_BUSY;
+  }
+  if (recovery) {
+    s_state.receive_recovery_count++;
+  }
+
+  status = dw3000_receive_start(&s_state.device);
+  if (status == DW3000_STATUS_BUSY) {
+    (void)dw3000_abort_receive(&s_state.device);
+    status = dw3000_receive_start(&s_state.device);
+  }
 
   if (status == DW3000_STATUS_OK) {
     s_state.receive_pending = true;
-    s_next_poll_time_ms = s_platform->get_time_ms();
-  } else {
-    s_state.receive_error_count++;
+    s_state.config_status = DW3000_STATUS_OK;
+    s_receive_started_time_ms = current_time_ms;
+    s_next_poll_time_ms = current_time_ms;
+    s_receive_start_failure_count = 0U;
+    return status;
   }
+
+  s_state.receive_pending = false;
+  s_state.receive_error_count++;
+  s_state.config_status = status;
+  s_receive_start_failure_count++;
+  s_next_receive_restart_time_ms =
+      current_time_ms + UWB_RX_RESTART_INTERVAL_MS;
+  if (s_receive_start_failure_count >= UWB_RX_MAX_START_FAILURES) {
+    s_state.cir_receive_enabled = false;
+    s_state.mode = UWB_SERVICE_MODE_IDLE;
+  }
+  return status;
+}
+
+static void reset_capture_queue(void)
+{
+  memset(s_capture_slots, 0, sizeof(s_capture_slots));
+  s_capture_read_index = 0U;
+  s_capture_write_index = 0U;
+  s_capture_count = 0U;
+  s_state.queued_capture_count = 0U;
+  s_state.cir_capture_ready = false;
 }
 
 static uint16_t select_cir_sample_offset(

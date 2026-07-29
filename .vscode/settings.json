@@ -5,6 +5,14 @@
     "cmake.preferredGenerators": [
         "Ninja"
     ],
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}/Python/src"
+    ],
+    "python.testing.pytestArgs": [
+        "tests"
+    ],
+    "python.testing.cwd": "${workspaceFolder}/Python",
+    "python.testing.pytestEnabled": true,
     "stm32cube-ide-clangd.path": "cube",
     "stm32cube-ide-clangd.arguments": [
         "starm-clangd",

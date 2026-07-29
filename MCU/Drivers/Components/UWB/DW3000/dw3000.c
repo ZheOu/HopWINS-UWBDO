@@ -9,6 +9,7 @@
 
 #include "deca_device_api.h"
 #include "deca_interface.h"
+#include "dw3000_deca_regs.h"
 
 #include <stddef.h>
 
@@ -308,6 +309,10 @@ dw3000_status_t dw3000_configure_radio(
   }
 
   dwt_configuretxrf(&tx_config);
+  dwt_configure_rf_port(
+      (config->rf_port == DW3000_RF_PORT_1)
+          ? DWT_RF_PORT_MANUAL_1
+          : DWT_RF_PORT_MANUAL_2);
   dwt_settxantennadelay(config->tx_antenna_delay);
   dwt_setrxantennadelay(config->rx_antenna_delay);
   if (s_transport_error != 0) {
@@ -622,6 +627,33 @@ dw3000_status_t dw3000_poll_receive(
   return DW3000_STATUS_OK;
 }
 
+dw3000_status_t dw3000_read_rx_register_snapshot(
+    const dw3000_device_t *device,
+    dw3000_rx_register_snapshot_t *snapshot)
+{
+  if ((device == NULL) || (snapshot == NULL)) {
+    return DW3000_STATUS_BAD_ARG;
+  }
+  if (!device->initialized || !device->configured || !s_sdk_ready ||
+      !s_rx_data_ready) {
+    return DW3000_STATUS_NOT_READY;
+  }
+
+  s_transport_error = 0;
+  *snapshot = (dw3000_rx_register_snapshot_t){
+    .system_time_hi32 = dwt_readsystimestamphi32(),
+    .system_status_high = dwt_readsysstatushi(),
+    .rx_finfo = dwt_read_reg(RX_FINFO_ID),
+    .cia_diag_0 = dwt_read_reg(CIA_DIAG_0_ID),
+    .cia_diag_1 = dwt_read_reg(CIA_DIAG_1_ID),
+    .dgc_decision = dwt_get_dgcdecision(),
+  };
+
+  return (s_transport_error == 0)
+             ? DW3000_STATUS_OK
+             : DW3000_STATUS_SPI_ERROR;
+}
+
 uint16_t dw3000_get_cir_sample_count(
     const dw3000_device_t *device)
 {
@@ -830,6 +862,8 @@ static dw3000_status_t validate_radio_config(
       (config->rx_preamble_code > 24U) ||
       (config->sfd_timeout == 0U) ||
       (config->tx_pulse_generator_delay > 0x3FU) ||
+      ((config->rf_port != DW3000_RF_PORT_1) &&
+       (config->rf_port != DW3000_RF_PORT_2)) ||
       ((config->sts_mode != DW3000_STS_OFF) &&
        !sts_length_is_valid(config->sts_length))) {
     return DW3000_STATUS_BAD_ARG;

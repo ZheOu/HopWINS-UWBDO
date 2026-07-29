@@ -193,7 +193,7 @@ void console_service_report_uwb(const uwb_service_state_t *state)
 
 void console_service_report_uwb_config(const uwb_service_state_t *state)
 {
-  uint8_t storage[224];
+  uint8_t storage[256];
   console_protocol_message_t message;
 
   if (state == NULL) {
@@ -261,6 +261,76 @@ void console_service_report_uwb_config(const uwb_service_state_t *state)
       &message,
       state->radio_config.tx_antenna_delay,
       4U);
+  (void)console_protocol_append_text(&message, ", RX_ANTD=0x");
+  (void)console_protocol_append_hex(
+      &message,
+      state->radio_config.rx_antenna_delay,
+      4U);
+  (void)console_protocol_append_text(&message, ", RF_PORT=");
+  (void)console_protocol_append_hex(
+      &message,
+      (uint8_t)state->radio_config.rf_port,
+      1U);
+  (void)console_protocol_send_with_crc(&message);
+}
+
+void console_service_report_uwb_rx_health(
+    const uwb_service_state_t *state)
+{
+  uint8_t storage[256];
+  console_protocol_message_t message;
+
+  if (state == NULL) {
+    return;
+  }
+
+  console_protocol_message_init(&message, storage, sizeof(storage));
+  (void)console_protocol_append_text(&message, "UWB RX HEALTH, ENABLE=");
+  (void)console_protocol_append_bool(
+      &message,
+      state->cir_receive_enabled);
+  (void)console_protocol_append_text(&message, ", PENDING=");
+  (void)console_protocol_append_bool(&message, state->receive_pending);
+  (void)console_protocol_append_text(&message, ", QUEUED=0x");
+  (void)console_protocol_append_hex(
+      &message,
+      state->queued_capture_count,
+      2U);
+  (void)console_protocol_append_text(&message, ", RX=0x");
+  (void)console_protocol_append_hex(
+      &message,
+      state->received_count,
+      8U);
+  (void)console_protocol_append_text(&message, ", ERR=0x");
+  (void)console_protocol_append_hex(
+      &message,
+      state->receive_error_count,
+      8U);
+  (void)console_protocol_append_text(&message, ", CRC_ERR=0x");
+  (void)console_protocol_append_hex(
+      &message,
+      state->receive_crc_error_count,
+      8U);
+  (void)console_protocol_append_text(&message, ", RECOVERY=0x");
+  (void)console_protocol_append_hex(
+      &message,
+      state->receive_recovery_count,
+      8U);
+  (void)console_protocol_append_text(&message, ", WATCHDOG=0x");
+  (void)console_protocol_append_hex(
+      &message,
+      state->receive_watchdog_count,
+      8U);
+  (void)console_protocol_append_text(&message, ", QFULL=0x");
+  (void)console_protocol_append_hex(
+      &message,
+      state->capture_queue_full_count,
+      8U);
+  (void)console_protocol_append_text(&message, ", UART_ERR=0x");
+  (void)console_protocol_append_hex(
+      &message,
+      board_pc_tx_error_count(),
+      8U);
   (void)console_protocol_send_with_crc(&message);
 }
 
@@ -310,20 +380,27 @@ board_status_t console_service_start_uwb_cir_export(
   uint32_t chunk_count;
 
   if ((capture == NULL) || (capture->frame == NULL) ||
-      (capture->cir_data == NULL) || (capture->cir_sample_count == 0U) ||
-      (capture->cir_sample_bytes == 0U)) {
+      (capture->frame_len == 0U)) {
     return BOARD_BAD_ARG;
   }
   if (s_cir_export != NULL) {
     return BOARD_BUSY;
   }
 
-  chunk_count =
-      ((uint32_t)capture->cir_sample_count +
-       CIR_PROTOCOL_SAMPLES_PER_CHUNK - 1U) /
-      CIR_PROTOCOL_SAMPLES_PER_CHUNK;
-  if ((chunk_count == 0U) || (chunk_count > UINT16_MAX)) {
-    return BOARD_BAD_ARG;
+  chunk_count = 0U;
+  if (capture->cir_status == DW3000_STATUS_OK) {
+    if ((capture->cir_data == NULL) ||
+        (capture->cir_sample_count == 0U) ||
+        (capture->cir_sample_bytes == 0U)) {
+      return BOARD_BAD_ARG;
+    }
+    chunk_count =
+        ((uint32_t)capture->cir_sample_count +
+         CIR_PROTOCOL_SAMPLES_PER_CHUNK - 1U) /
+        CIR_PROTOCOL_SAMPLES_PER_CHUNK;
+    if ((chunk_count == 0U) || (chunk_count > UINT16_MAX)) {
+      return BOARD_BAD_ARG;
+    }
   }
 
   s_cir_export = capture;

@@ -13,6 +13,7 @@
 #include <string.h>
 
 #define BOARD_PC_TX_BUFFER_SIZE UINT32_C(16384)
+#define BOARD_PC_TX_DMA_TIMEOUT_MS UINT32_C(100)
 
 #if HOPWINS_BOARD_DEFAULT_XO == HOPWINS_BOARD_XO_NONE
 #define BOARD_INSTALLED_XO BOARD_CLOCK_XO_NONE
@@ -56,6 +57,7 @@ static int32_t board_fpga_spi_write(const uint8_t *data, uint16_t len);
 static void board_delay_ms(uint32_t delay_ms);
 static void board_delay_us(uint32_t delay_us);
 static uint32_t board_time_ms(void);
+static int32_t board_reference_time_ms(uint32_t *timestamp_ms);
 static board_status_t board_pc_tx_start(void);
 static uint32_t board_pc_tx_used(uint32_t head, uint32_t tail);
 
@@ -64,8 +66,10 @@ static uint8_t s_pc_tx_buffer[BOARD_PC_TX_BUFFER_SIZE]
 static volatile uint32_t s_pc_tx_head;
 static volatile uint32_t s_pc_tx_tail;
 static volatile uint32_t s_pc_tx_in_flight;
+static volatile uint32_t s_pc_tx_started_ms;
 static volatile uint32_t s_pc_tx_errors;
 static volatile bool s_pc_tx_dma_active;
+static bool s_external_clock_counter_started;
 
 static const board_capabilities_t s_capabilities = {
   .name = HOPWINS_BOARD_NAME,
@@ -127,6 +131,7 @@ static const dw3000_platform_t s_dw3000_platform = {
   .delay_ms = board_delay_ms,
   .delay_us = board_delay_us,
   .get_time_ms = board_time_ms,
+  .get_reference_time_ms = board_reference_time_ms,
   .lock = NULL,
   .unlock = NULL,
 };
@@ -204,8 +209,10 @@ void board_init(void)
   s_pc_tx_head = 0U;
   s_pc_tx_tail = 0U;
   s_pc_tx_in_flight = 0U;
+  s_pc_tx_started_ms = 0U;
   s_pc_tx_errors = 0U;
   s_pc_tx_dma_active = false;
+  s_external_clock_counter_started = false;
 
   board_spi_deselect_all();
 #if HOPWINS_BOARD_HAS_FPGA
@@ -216,6 +223,15 @@ void board_init(void)
 #if HOPWINS_BOARD_HAS_CLOCK_CONTROL
   board_clock_select_xo(s_board.clock.installed_xo);
 #endif
+#if HOPWINS_BOARD_HAS_EXTERNAL_CLOCK_COUNTER
+  s_external_clock_counter_started =
+      board_external_clock_counter_start() == BOARD_OK;
+#endif
+}
+
+uint32_t board_get_time_ms(void)
+{
+  return HAL_GetTick();
 }
 
 const struct dw3000_platform *board_uwb_get_platform(void)
@@ -502,6 +518,15 @@ board_status_t board_pc_transmit(const uint8_t *data, size_t len)
 
 void board_pc_tx_process(void)
 {
+  if (s_pc_tx_dma_active &&
+      ((uint32_t)(board_get_time_ms() - s_pc_tx_started_ms) >=
+       BOARD_PC_TX_DMA_TIMEOUT_MS)) {
+    (void)HAL_UART_AbortTransmit(s_board.pc_uart.huart);
+    s_pc_tx_in_flight = 0U;
+    s_pc_tx_dma_active = false;
+    s_pc_tx_errors++;
+  }
+
   (void)board_pc_tx_start();
 }
 
@@ -673,6 +698,7 @@ static board_status_t board_pc_tx_start(void)
   }
 
   s_pc_tx_in_flight = transfer_len;
+  s_pc_tx_started_ms = board_get_time_ms();
   s_pc_tx_dma_active = true;
   status = HAL_UART_Transmit_DMA(
       s_board.pc_uart.huart,
@@ -680,6 +706,7 @@ static board_status_t board_pc_tx_start(void)
       (uint16_t)transfer_len);
   if (status != HAL_OK) {
     s_pc_tx_in_flight = 0U;
+    s_pc_tx_started_ms = 0U;
     s_pc_tx_dma_active = false;
     if (status != HAL_BUSY) {
       s_pc_tx_errors++;
@@ -705,6 +732,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
   s_pc_tx_tail =
       (s_pc_tx_tail + s_pc_tx_in_flight) % BOARD_PC_TX_BUFFER_SIZE;
   s_pc_tx_in_flight = 0U;
+  s_pc_tx_started_ms = 0U;
   s_pc_tx_dma_active = false;
   (void)board_pc_tx_start();
 }
@@ -716,8 +744,8 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
   }
 
   if (s_pc_tx_dma_active) {
-    s_pc_tx_tail = s_pc_tx_head;
     s_pc_tx_in_flight = 0U;
+    s_pc_tx_started_ms = 0U;
     s_pc_tx_dma_active = false;
     s_pc_tx_errors++;
   }
@@ -919,5 +947,15 @@ static void board_delay_us(uint32_t delay_us)
 
 static uint32_t board_time_ms(void)
 {
-  return HAL_GetTick();
+  return board_get_time_ms();
+}
+
+static int32_t board_reference_time_ms(uint32_t *timestamp_ms)
+{
+  if ((timestamp_ms == NULL) || !s_external_clock_counter_started) {
+    return (int32_t)BOARD_ERROR;
+  }
+
+  *timestamp_ms = board_external_clock_counter_get();
+  return (int32_t)BOARD_OK;
 }

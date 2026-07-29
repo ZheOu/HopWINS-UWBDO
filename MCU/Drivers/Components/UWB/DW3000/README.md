@@ -40,13 +40,14 @@ IRQ. Add board lock/unlock callbacks when IRQ handling is introduced.
 4. Probe the Qorvo DW3000 driver and verify IDLE_RC.
 5. Run `dwt_initialise(DWT_READ_OTP_ALL)` to load OTP trims.
 6. Switch SPI1 to 12 MHz and read the device ID again.
-7. Translate the project `dw3000_radio_config_t` into Qorvo `dwt_config_t` and
-   call `dwt_configure()`, `dwt_configuretxrf()`, and the antenna-delay APIs.
+7. Translate the project `dw3000_radio_config_t` into Qorvo `dwt_config_t`,
+   call `dwt_configure()`, force the selected RF port, then configure TX RF and
+   calibrated antenna delays.
 8. For TX, write a frame, program `DX_TIME`, issue delayed TX, poll `TXFRS`,
    and read the 40-bit transmitted timestamp.
 9. For RX/CIR, enable full CIA logging before RX, wait for `RXFCG`, read the
-   frame and 40-bit timestamp, then read Ipatov diagnostics and accumulator
-   samples before re-enabling RX.
+   frame and 40-bit timestamp, snapshot important RX/CIA registers, then read
+   Ipatov diagnostics and accumulator samples before re-enabling RX.
 
 The board implementation owns STM32 HAL handles, pins, SPI rates, reset
 electrical behavior, and delay timing. The component driver does not include

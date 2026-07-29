@@ -29,6 +29,7 @@ const uwb_profile_t g_uwb_default_profile = {
     .tx_pulse_generator_count = 0U,
     .tx_antenna_delay = 0U,
     .rx_antenna_delay = 0U,
+    .rf_port = DW3000_RF_PORT_1,
   },
   .pan_id = UINT16_C(0xDECA),
   .destination_address = UINT16_C(0xFFFF),

@@ -27,6 +27,8 @@ void console_service_report_fpga_image(const fpga_service_state_t *state);
 void console_service_report_fpga_result(const fpga_service_state_t *state);
 void console_service_report_uwb(const uwb_service_state_t *state);
 void console_service_report_uwb_config(const uwb_service_state_t *state);
+void console_service_report_uwb_rx_health(
+    const uwb_service_state_t *state);
 void console_service_report_uwb_tx(
     const uwb_service_tx_event_t *event);
 board_status_t console_service_start_uwb_cir_export(

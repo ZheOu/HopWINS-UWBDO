@@ -24,10 +24,16 @@
 #error "The DO follower role requires FPGA and clock-control hardware"
 #endif
 
+#define FOLLOWER_UWB_RETRY_INTERVAL_MS UINT32_C(1000)
+#define FOLLOWER_RX_HEALTH_INTERVAL_MS UINT32_C(5000)
+
 static bool s_cir_export_active;
+static bool s_uwb_running;
+static uint32_t s_next_uwb_retry_ms;
+static uint32_t s_next_rx_health_ms;
 
 static void start_fpga(void);
-static void start_uwb(void);
+static bool start_uwb(void);
 
 const char *role_service_name(void)
 {
@@ -37,13 +43,34 @@ const char *role_service_name(void)
 void role_service_init(void)
 {
   s_cir_export_active = false;
+  s_uwb_running = false;
+  s_next_uwb_retry_ms = 0U;
+  s_next_rx_health_ms = 0U;
   start_fpga();
-  start_uwb();
+  s_uwb_running = start_uwb();
+  if (!s_uwb_running) {
+    s_next_uwb_retry_ms =
+        board_get_time_ms() + FOLLOWER_UWB_RETRY_INTERVAL_MS;
+  }
 }
 
 void role_service_process(void)
 {
+  const uwb_service_state_t *state;
   const uwb_service_cir_capture_t *capture;
+  uint32_t current_time_ms = board_get_time_ms();
+
+  if (!s_uwb_running) {
+    if ((int32_t)(current_time_ms - s_next_uwb_retry_ms) >= 0) {
+      console_service_write("UWB RX: retrying initialization\r\n");
+      s_uwb_running = start_uwb();
+      s_next_uwb_retry_ms =
+          current_time_ms + FOLLOWER_UWB_RETRY_INTERVAL_MS;
+      s_next_rx_health_ms =
+          current_time_ms + FOLLOWER_RX_HEALTH_INTERVAL_MS;
+    }
+    return;
+  }
 
   if (s_cir_export_active &&
       !console_service_uwb_cir_export_busy()) {
@@ -52,6 +79,23 @@ void role_service_process(void)
   }
 
   uwb_service_process();
+  state = uwb_service_get_state();
+  if (!state->cir_receive_enabled) {
+    if (s_cir_export_active) {
+      return;
+    }
+    s_uwb_running = false;
+    s_next_uwb_retry_ms =
+        current_time_ms + FOLLOWER_UWB_RETRY_INTERVAL_MS;
+    console_service_write("UWB RX: state lost, scheduling reinit\r\n");
+    return;
+  }
+
+  if ((int32_t)(current_time_ms - s_next_rx_health_ms) >= 0) {
+    console_service_report_uwb_rx_health(state);
+    s_next_rx_health_ms =
+        current_time_ms + FOLLOWER_RX_HEALTH_INTERVAL_MS;
+  }
   if (s_cir_export_active) {
     return;
   }
@@ -102,7 +146,7 @@ static void start_fpga(void)
   }
 }
 
-static void start_uwb(void)
+static bool start_uwb(void)
 {
   dw3000_status_t status =
       uwb_service_init(board_uwb_get_platform());
@@ -115,9 +159,10 @@ static void start_uwb(void)
 
   console_service_report_uwb(uwb_service_get_state());
   if (status != DW3000_STATUS_OK) {
-    return;
+    return false;
   }
 
-  (void)uwb_service_start_cir_receive(&g_uwb_default_profile);
+  status = uwb_service_start_cir_receive(&g_uwb_default_profile);
   console_service_report_uwb_config(uwb_service_get_state());
+  return status == DW3000_STATUS_OK;
 }
