@@ -20,10 +20,40 @@
 #define CLOCK_SERVICE_T_LOGIC_US   2U
 #define CLOCK_SERVICE_T_MIDDLE_US  3U
 
+/*
+ * Pulls the monitor walks through. Large on purpose: MSI gates the measurement,
+ * so anything near a ppm is indistinguishable from its drift. +/-1000 ppm moves
+ * the raw count by 38400 per second, which nothing else can imitate.
+ */
+#define CLOCK_SERVICE_MONITOR_STEPS 4U
+
+/*
+ * What CubeMX programs into TIM2, restored when a measurement finishes. 38399
+ * divides the 38.4 MHz reference to exactly 1000 counts per second, which is a
+ * useful tick and useless for frequency measurement.
+ */
+#define CLOCK_SERVICE_CUBEMX_PRESCALER 38399U
+
 /* Private variables ---------------------------------------------------------*/
 
 static sit3907_device_t s_dcxo;
 static clock_service_state_t s_state;
+
+static const int32_t s_monitor_ppb[CLOCK_SERVICE_MONITOR_STEPS] = {
+  0, 1000000, 0, -1000000,
+};
+
+static struct {
+  bool active;
+  uint32_t gate_ms;
+  uint32_t gates_per_step;
+  uint32_t gate_index;
+  uint32_t step_index;
+  uint32_t sample_index;
+  uint32_t gate_start_ms;
+  uint32_t counter_at_gate_start;
+  sit3907_status_t pull_status;
+} s_monitor;
 
 /* Private function prototypes -----------------------------------------------*/
 
@@ -33,6 +63,8 @@ static void dp_release(void);
 static void dp_delay_us(uint32_t delay_us);
 static uint32_t measure_external_clock(uint32_t dwell_ms);
 static uint32_t expected_counts(int32_t ppb, uint32_t dwell_ms);
+static void counter_set_prescaler(uint32_t prescaler);
+static int32_t counts_to_ppb(uint32_t counts, uint32_t gate_ms);
 
 static const sit3907_platform_t s_dcxo_platform = {
   .dp_drive_high = dp_drive_high,
@@ -176,6 +208,105 @@ const clock_service_state_t *clock_service_get_state(void)
   return &s_state;
 }
 
+sit3907_status_t clock_service_monitor_start(
+    uint32_t gate_ms,
+    uint32_t gates_per_step)
+{
+  if (!s_state.initialized) {
+    return SIT3907_STATUS_NOT_INITIALIZED;
+  }
+  if ((gate_ms == 0U) || (gates_per_step == 0U)) {
+    return SIT3907_STATUS_BAD_ARG;
+  }
+
+  s_monitor.gate_ms = gate_ms;
+  s_monitor.gates_per_step = gates_per_step;
+  s_monitor.gate_index = 0U;
+  s_monitor.step_index = 0U;
+  s_monitor.sample_index = 0U;
+
+  /* Count raw edges, not the 1 kHz CubeMX divides them down to. */
+  counter_set_prescaler(0U);
+  if (board_external_clock_counter_start() != BOARD_OK) {
+    return SIT3907_STATUS_BAD_ARG;
+  }
+
+  s_monitor.pull_status = sit3907_set_pull_ppb(&s_dcxo, s_monitor_ppb[0]);
+  s_monitor.counter_at_gate_start = board_external_clock_counter_get();
+  s_monitor.gate_start_ms = board_get_time_ms();
+  s_monitor.active = true;
+  return SIT3907_STATUS_OK;
+}
+
+bool clock_service_monitor_poll(clock_service_monitor_sample_t *sample)
+{
+  uint32_t now_ms;
+  uint32_t counter_now;
+
+  if (!s_monitor.active || (sample == NULL)) {
+    return false;
+  }
+
+  now_ms = board_get_time_ms();
+  if ((uint32_t)(now_ms - s_monitor.gate_start_ms) < s_monitor.gate_ms) {
+    return false;
+  }
+
+  counter_now = board_external_clock_counter_get();
+
+  /*
+   * Unsigned difference, so the free-running 32-bit counter wrapping every
+   * 112 seconds at 38.4 MHz needs no special handling.
+   */
+  sample->counter_delta = counter_now - s_monitor.counter_at_gate_start;
+  sample->gate_ms = now_ms - s_monitor.gate_start_ms;
+  sample->requested_ppb = s_monitor_ppb[s_monitor.step_index];
+  sample->pull_status = s_monitor.pull_status;
+  sample->sample_index = s_monitor.sample_index;
+  /* Uses the achieved gate rather than the requested one, so a late poll does
+     not read as a frequency error. */
+  sample->measured_ppb = counts_to_ppb(sample->counter_delta, sample->gate_ms);
+
+  s_monitor.sample_index++;
+  s_monitor.counter_at_gate_start = counter_now;
+  s_monitor.gate_start_ms = now_ms;
+
+  s_monitor.gate_index++;
+  if (s_monitor.gate_index >= s_monitor.gates_per_step) {
+    s_monitor.gate_index = 0U;
+    s_monitor.step_index =
+        (s_monitor.step_index + 1U) % CLOCK_SERVICE_MONITOR_STEPS;
+    s_monitor.pull_status =
+        sit3907_set_pull_ppb(&s_dcxo, s_monitor_ppb[s_monitor.step_index]);
+
+    /*
+     * The pull write and its settling delay sit inside this gate boundary, so
+     * the counter and timestamp are re-baselined afterwards; otherwise the
+     * first gate of each step would report a frequency averaged across the
+     * transition.
+     */
+    s_monitor.counter_at_gate_start = board_external_clock_counter_get();
+    s_monitor.gate_start_ms = board_get_time_ms();
+  }
+
+  return true;
+}
+
+void clock_service_monitor_stop(void)
+{
+  if (!s_monitor.active) {
+    return;
+  }
+
+  s_monitor.active = false;
+  (void)board_external_clock_counter_stop();
+  counter_set_prescaler(CLOCK_SERVICE_CUBEMX_PRESCALER);
+  (void)sit3907_center(&s_dcxo);
+  s_state.last_requested_ppb = 0;
+  s_state.last_code = 0;
+  s_state.writes = s_dcxo.writes;
+}
+
 /* Private functions ---------------------------------------------------------*/
 
 static void dp_drive_high(void)
@@ -231,6 +362,54 @@ static uint32_t expected_counts(int32_t ppb, uint32_t dwell_ms)
 }
 
 /*
+ * Reprograms the TIM2 prescaler and makes it take effect immediately.
+ *
+ * A prescaler write only latches on the next update event, and the counter runs
+ * to 0xFFFFFFFF, so without forcing an update the new value would not apply for
+ * almost two minutes. The handle comes from the board's public component table
+ * rather than a private extern; reaching into HAL from a service is deliberate
+ * and local to this bench measurement.
+ */
+static void counter_set_prescaler(uint32_t prescaler)
+{
+  const board_components_t *components = board_get_components();
+  TIM_HandleTypeDef *htim = components->external_clock_timer.htim;
+
+  if (htim == NULL) {
+    return;
+  }
+
+  (void)board_external_clock_counter_stop();
+  __HAL_TIM_SET_PRESCALER(htim, prescaler);
+  /* Force an update event so the shadow register takes the new prescaler. */
+  htim->Instance->EGR = TIM_EGR_UG;
+  __HAL_TIM_SET_COUNTER(htim, 0U);
+  __HAL_TIM_CLEAR_FLAG(htim, TIM_FLAG_UPDATE);
+}
+
+/*
+ * Deviation from the nominal 38.4 MHz, in ppb, from a raw edge count and the
+ * gate that produced it.
+ *
+ *   ppb = (counts - nominal) * 1e9 / nominal,  nominal = 38.4e6 * gate_ms / 1000
+ *
+ * The subtraction happens before the scaling so a 1 ppb difference survives; the
+ * numerator peaks near 3.8e16 for a full-scale error, well inside int64.
+ */
+static int32_t counts_to_ppb(uint32_t counts, uint32_t gate_ms)
+{
+  int64_t nominal = ((int64_t)SIT3907_NOMINAL_HZ * (int64_t)gate_ms) / 1000;
+  int64_t error;
+
+  if (nominal <= 0) {
+    return 0;
+  }
+
+  error = ((int64_t)counts - nominal) * INT64_C(1000000000);
+  return (int32_t)(error / nominal);
+}
+
+/*
  * Counts TIM2 ETR edges for dwell_ms. The external clock arrives on PA0 from
  * the board clock buffer, so this is the one place the firmware can observe the
  * oscillator actually moving.
@@ -241,8 +420,12 @@ static uint32_t measure_external_clock(uint32_t dwell_ms)
   uint32_t before;
   uint32_t after;
 
+  /* Raw edges, for the same reason the monitor does it: at the CubeMX
+     prescaler one ppm is a thousandth of a count. */
+  counter_set_prescaler(0U);
   board_external_clock_counter_reset();
   if (board_external_clock_counter_start() != BOARD_OK) {
+    counter_set_prescaler(CLOCK_SERVICE_CUBEMX_PRESCALER);
     return 0U;
   }
 
@@ -254,5 +437,6 @@ static uint32_t measure_external_clock(uint32_t dwell_ms)
   after = board_external_clock_counter_get();
 
   (void)board_external_clock_counter_stop();
+  counter_set_prescaler(CLOCK_SERVICE_CUBEMX_PRESCALER);
   return after - before;
 }

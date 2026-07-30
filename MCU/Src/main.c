@@ -23,6 +23,8 @@
 /* USER CODE BEGIN Includes */
 #include "app.h"
 #include "board.h"
+#include "clock_service.h"
+#include "console_protocol.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -74,6 +76,75 @@ static void MX_ICACHE_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+/*
+ * Temporary SiT3907 bring-up check. This lives in main.c on purpose: it is a
+ * one-off wiring test, not application behaviour, and Services/README.md keeps
+ * roles free of board policy. Once the DP line is proven, move the call into
+ * do_follower_service.c and the reporting into console_service.c, then delete
+ * this block.
+ */
+static void APP_ReportClockSweep(void)
+{
+  const clock_service_state_t *state = clock_service_get_state();
+  uint8_t storage[192];
+  console_protocol_message_t message;
+
+  console_protocol_message_init(&message, storage, sizeof(storage));
+  (void)console_protocol_append_text(&message, "DCXO INIT, STATUS=0x");
+  (void)console_protocol_append_hex(&message, (uint8_t)state->init_status, 2U);
+  (void)console_protocol_append_text(&message, ", STEP_PPB=0x");
+  (void)console_protocol_append_hex(&message, (uint32_t)state->step_ppb, 8U);
+  (void)console_protocol_append_text(&message, ", RANGE_PPB=0x");
+  (void)console_protocol_append_hex(&message, (uint32_t)state->range_ppb, 8U);
+  (void)console_protocol_send_with_crc(&message);
+
+  if (!state->sweep_valid) {
+    return;
+  }
+
+  for (uint32_t i = 0U; i < state->sweep_count; i++) {
+    const clock_service_sweep_point_t *point = &state->sweep[i];
+
+    console_protocol_message_init(&message, storage, sizeof(storage));
+    (void)console_protocol_append_text(&message, "DCXO STEP=0x");
+    (void)console_protocol_append_hex(&message, i, 2U);
+    (void)console_protocol_append_text(&message, ", REQ_PPB=0x");
+    (void)console_protocol_append_hex(&message, (uint32_t)point->requested_ppb, 8U);
+    (void)console_protocol_append_text(&message, ", APPLIED_PPB=0x");
+    (void)console_protocol_append_hex(&message, (uint32_t)point->applied_ppb, 8U);
+    (void)console_protocol_append_text(&message, ", CODE=0x");
+    (void)console_protocol_append_hex(&message, (uint32_t)point->code, 8U);
+    (void)console_protocol_append_text(&message, ", COUNT=0x");
+    (void)console_protocol_append_hex(&message, point->counter_delta, 8U);
+    (void)console_protocol_append_text(&message, ", EXPECT=0x");
+    (void)console_protocol_append_hex(&message, point->expected_delta, 8U);
+    (void)console_protocol_append_text(&message, ", STATUS=0x");
+    (void)console_protocol_append_hex(&message, (uint8_t)point->status, 2U);
+    (void)console_protocol_send_with_crc(&message);
+  }
+}
+
+/* One line per gate, so the commanded pull can be watched taking effect. */
+static void APP_ReportClockMonitor(const clock_service_monitor_sample_t *sample)
+{
+  uint8_t storage[192];
+  console_protocol_message_t message;
+
+  console_protocol_message_init(&message, storage, sizeof(storage));
+  (void)console_protocol_append_text(&message, "DCXO MON, IDX=0x");
+  (void)console_protocol_append_hex(&message, sample->sample_index, 4U);
+  (void)console_protocol_append_text(&message, ", REQ_PPB=0x");
+  (void)console_protocol_append_hex(&message, (uint32_t)sample->requested_ppb, 8U);
+  (void)console_protocol_append_text(&message, ", MEAS_PPB=0x");
+  (void)console_protocol_append_hex(&message, (uint32_t)sample->measured_ppb, 8U);
+  (void)console_protocol_append_text(&message, ", COUNT=0x");
+  (void)console_protocol_append_hex(&message, sample->counter_delta, 8U);
+  (void)console_protocol_append_text(&message, ", GATE_MS=0x");
+  (void)console_protocol_append_hex(&message, sample->gate_ms, 4U);
+  (void)console_protocol_append_text(&message, ", STATUS=0x");
+  (void)console_protocol_append_hex(&message, (uint8_t)sample->pull_status, 2U);
+  (void)console_protocol_send_with_crc(&message);
+}
 /* USER CODE END 0 */
 
 /**
@@ -118,6 +189,24 @@ int main(void)
   MX_ICACHE_Init();
   /* USER CODE BEGIN 2 */
   board_init();
+
+  /*
+   * DCXO bench test. The one-shot sweep proves the wire in about five seconds;
+   * the monitor then streams one measurement per second forever, cycling the
+   * pull every five gates, which is what makes the change visible live.
+   *
+   * Both run before app_init() so TIM2 and the DP pin are uncontended. Note the
+   * monitor holds TIM2 at prescaler 0 for as long as it runs, so nothing else
+   * can use the external clock counter meanwhile.
+   */
+  if (clock_service_init(SIT3907_MODE_2, 0U) == SIT3907_STATUS_OK) {
+    (void)clock_service_run_pull_sweep(1000U);
+    APP_ReportClockSweep();
+    (void)clock_service_monitor_start(1000U, 5U);
+  } else {
+    APP_ReportClockSweep();
+  }
+
   app_init();
   /* USER CODE END 2 */
 
@@ -128,6 +217,11 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    clock_service_monitor_sample_t clock_sample;
+
+    if (clock_service_monitor_poll(&clock_sample)) {
+      APP_ReportClockMonitor(&clock_sample);
+    }
     app_process();
   }
   /* USER CODE END 3 */

@@ -103,6 +103,58 @@ sit3907_status_t clock_service_run_pull_sweep(uint32_t dwell_ms);
 
 const clock_service_state_t *clock_service_get_state(void);
 
+/* ---------------------------------------------------------------------------
+ * Continuous per-second monitor
+ *
+ * Streams one measurement per gate so the commanded pull can be watched taking
+ * effect, instead of the one-shot sweep above. Cycles the pull on its own so a
+ * bench session needs no interaction.
+ *
+ * Both the sweep and this monitor reprogram the TIM2 prescaler while they run.
+ * CubeMX configures it as 38399, which divides the 38.4 MHz input down to 1000
+ * counts per second; at that scale 1 ppm is a thousandth of a count and cannot
+ * be seen at all. The measurement therefore drops the prescaler to zero and
+ * counts raw edges, where 1 ppm is 38.4 counts per second, then restores it.
+ *
+ * Absolute accuracy is still limited by MSI, which gates the measurement, to
+ * roughly a ppm. That is irrelevant for confirming the pull moves and matters a
+ * great deal before these numbers are used to calibrate anything.
+ * ------------------------------------------------------------------------- */
+
+typedef struct {
+  uint32_t sample_index;
+  /** Raw ETR edges counted during the gate. */
+  uint32_t counter_delta;
+  /** Gate actually achieved, from the millisecond clock, not the nominal. */
+  uint32_t gate_ms;
+  /** Pull commanded while this gate was open. */
+  int32_t requested_ppb;
+  /** Deviation from nominal implied by counter_delta over gate_ms. */
+  int32_t measured_ppb;
+  sit3907_status_t pull_status;
+} clock_service_monitor_sample_t;
+
+/**
+  * @brief Begin streaming measurements, cycling the pull automatically.
+  *
+  * @param gate_ms          Length of one measurement. 1000 is a sensible floor.
+  * @param gates_per_step   Gates to hold each pull before advancing.
+  */
+sit3907_status_t clock_service_monitor_start(
+    uint32_t gate_ms,
+    uint32_t gates_per_step);
+
+/**
+  * @brief Non-blocking poll. Returns true once per gate with a fresh sample.
+  *
+  * Call it from the main loop. It restores nothing on its own; call
+  * clock_service_monitor_stop() to put the prescaler and the pull back.
+  */
+bool clock_service_monitor_poll(clock_service_monitor_sample_t *sample);
+
+/** @brief Stop monitoring, recentre the oscillator, restore the prescaler. */
+void clock_service_monitor_stop(void);
+
 #ifdef __cplusplus
 }
 #endif
