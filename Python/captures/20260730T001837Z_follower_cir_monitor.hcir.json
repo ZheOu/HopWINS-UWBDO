@@ -1,0 +1,70 @@
+{
+  "bytes": 264435,
+  "finished_utc": "2026-07-30T00:19:13.668727+00:00",
+  "format": "raw-hcir-stream",
+  "session": {
+    "config_files": [
+      "/Users/andy/VSCodeWorkSpace/HopWINS-UWBDO/Python/config.ini"
+    ],
+    "device": "follower",
+    "effective_config": {
+      "app": {
+        "device": "follower",
+        "task": "cir_monitor"
+      },
+      "device.follower": {
+        "baudrate": "5000000",
+        "description_contains": "",
+        "expected_board": "Follower-Full",
+        "expected_role": "DO-Follower",
+        "pid": "0x3754",
+        "port": "auto",
+        "serial_number": "",
+        "timeout_s": "0.1",
+        "vid": "0x0483"
+      },
+      "device.leader": {
+        "baudrate": "5000000",
+        "description_contains": "",
+        "expected_board": "Leader-UwbOnly",
+        "expected_role": "DO-Leader",
+        "pid": "0x3754",
+        "port": "auto",
+        "serial_number": "",
+        "timeout_s": "0.1",
+        "vid": "0x0483"
+      },
+      "storage": {
+        "capture_directory": "captures",
+        "filename_template": "{timestamp}_{device}_{task}.hcir"
+      },
+      "task.capture_inspect": {
+        "cir_radius": "4",
+        "frame_bytes": "32",
+        "limit": "3",
+        "path": "latest"
+      },
+      "task.cir_monitor": {
+        "record": "true",
+        "record_path": "",
+        "rolling_window": "200"
+      },
+      "task.list_ports": {},
+      "task.raw_record": {
+        "output": ""
+      },
+      "task.replay": {
+        "path": "latest",
+        "rolling_window": "200",
+        "speed": "1.0"
+      }
+    },
+    "serial": {
+      "baudrate": 5000000,
+      "port": "/dev/cu.usbmodem31102",
+      "timeout_s": 0.1
+    },
+    "task": "cir_monitor"
+  },
+  "started_utc": "2026-07-30T00:18:37.861724+00:00"
+}

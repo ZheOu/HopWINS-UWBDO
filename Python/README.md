@@ -35,6 +35,7 @@ The normal entry point reads `config.ini`:
 hopwins tasks
 hopwins run
 hopwins run --task raw_record --device follower
+hopwins run --task capture_inspect
 hopwins run --task replay
 ```
 
@@ -73,6 +74,19 @@ Live monitoring records by default. Each `.hcir` file has a `.hcir.json`
 sidecar containing the effective configuration, resolved serial connection,
 firmware profile, time range, and byte count. The binary `.hcir` stream remains
 the source record for every session.
+
+`capture_inspect` prints a limited number of captures in human-readable form,
+including RX status, adjusted `RX_STAMP`, FPI, peak indices, power diagnostics,
+and a small I/Q table around the FPI. Configure `path`, `limit`, `cir_radius`,
+and `frame_bytes` under `[task.capture_inspect]`.
+
+The HCIR v2 `rx_timestamp` is the DW3000 fully adjusted RX timestamp: the CIA
+first-path correction has been applied and `RXANTD` has been subtracted. New
+firmware also writes coarse `RX_RAWST` into the formerly reserved final five
+header bytes and sets `RAW_TIMESTAMP_VALID`; older captures remain readable
+and report the raw value as unavailable. `capture_inspect` calculates
+`signed40(RX_STAMP - RX_RAWST + RXANTD)` when both values are present.
+Separate `IP_TOA`/`STS_TOA` values are not recorded.
 
 ## VS Code
 
