@@ -153,10 +153,19 @@ if(HOPWINS_BOARD_EMBED_FPGA_IMAGE)
     )
 endif()
 
+# The DCXO is only fitted on assemblies that carry clock control, so the driver
+# follows the same population gate the board target already publishes.
+if(HOPWINS_BOARD_HAS_CLOCK_CONTROL)
+    target_sources(${CMAKE_PROJECT_NAME} PRIVATE
+        Drivers/Components/CLK/SiT3907ACP2F-25NZ-38.400000/sit3907.c
+    )
+endif()
+
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
     Boards/HopWINS-UWBDO-PCB-STDWDO
+    Drivers/Components/CLK/SiT3907ACP2F-25NZ-38.400000
     Drivers/Components/FPGA/ICE40
     Drivers/Components/UWB/DW3000
 )

@@ -43,8 +43,15 @@ if(HOPWINS_BOARD_EMBED_FPGA_IMAGE)
     )
 endif()
 
+if(HOPWINS_BOARD_HAS_CLOCK_CONTROL)
+    target_sources(${CMAKE_PROJECT_NAME} PRIVATE
+        CLK/clock_service.c
+    )
+endif()
+
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     App
+    CLK
     Console
     FPGA
     Roles
