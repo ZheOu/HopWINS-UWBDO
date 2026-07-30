@@ -1,7 +1,7 @@
 /**
   ******************************************************************************
   * @file           : role_service.h
-  * @brief          : Selected application-role service interface
+ * @brief          : Runtime application-workflow dispatcher
   ******************************************************************************
   */
 
@@ -12,15 +12,10 @@
 extern "C" {
 #endif
 
-#define HOPWINS_APP_ROLE_DO_LEADER    1
-#define HOPWINS_APP_ROLE_DO_FOLLOWER  2
+#include "app_config.h"
 
-#ifndef HOPWINS_APP_ROLE
-#error "HOPWINS_APP_ROLE must be selected by a CMake configure preset"
-#endif
-
-const char *role_service_name(void);
-void role_service_init(void);
+const char *role_service_name(app_workflow_t workflow);
+bool role_service_init(const app_config_t *config);
 void role_service_process(void);
 
 #ifdef __cplusplus

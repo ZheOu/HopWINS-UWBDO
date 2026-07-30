@@ -38,6 +38,11 @@ typedef enum {
 } uwb_service_mode_t;
 
 typedef struct {
+  uint16_t sample_count;
+  uint16_t pre_first_path_samples;
+} uwb_service_cir_config_t;
+
+typedef struct {
   uint32_t capture_id;
   const uint8_t *frame;
   uint16_t frame_len;
@@ -99,7 +104,8 @@ dw3000_status_t uwb_service_start_periodic_transmit(
     const uwb_profile_t *profile);
 void uwb_service_stop_periodic_transmit(void);
 dw3000_status_t uwb_service_start_cir_receive(
-    const uwb_profile_t *profile);
+    const uwb_profile_t *profile,
+    const uwb_service_cir_config_t *config);
 void uwb_service_stop_cir_receive(void);
 const uwb_service_cir_capture_t *uwb_service_get_cir_capture(void);
 dw3000_status_t uwb_service_release_cir_capture(void);

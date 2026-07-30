@@ -4,89 +4,16 @@
         {
             "type": "stlinkgdbtarget",
             "request": "launch",
-            "name": "STM32: DO Leader Debug",
+            "name": "MCU: Debug",
             "cwd": "${workspaceFolder}/MCU",
-            "preLaunchTask": "CMake: Build Leader-Debug",
+            "preLaunchTask": "MCU: Build Debug",
             "runEntry": "main",
             "imagesAndSymbols": [
                 {
-                    "imageFileName": "${workspaceFolder}/MCU/build/Leader-Debug/HopWINS-DO-Leader.elf",
-                    "symbolFileName": "${workspaceFolder}/MCU/build/Leader-Debug/HopWINS-DO-Leader.elf"
+                    "imageFileName": "${workspaceFolder}/MCU/build/Debug/HopWINS-UWBDO-MCU.elf",
+                    "symbolFileName": "${workspaceFolder}/MCU/build/Debug/HopWINS-UWBDO-MCU.elf"
                 }
             ]
-        },
-        {
-            "type": "stlinkgdbtarget",
-            "request": "launch",
-            "name": "STM32: DO Follower Debug",
-            "cwd": "${workspaceFolder}/MCU",
-            "preLaunchTask": "CMake: Build Follower-Debug",
-            "runEntry": "main",
-            "imagesAndSymbols": [
-                {
-                    "imageFileName": "${workspaceFolder}/MCU/build/Follower-Debug/HopWINS-DO-Follower.elf",
-                    "symbolFileName": "${workspaceFolder}/MCU/build/Follower-Debug/HopWINS-DO-Follower.elf"
-                }
-            ]
-        },
-        {
-            "type": "debugpy",
-            "request": "launch",
-            "name": "Python: Configured Task",
-            "module": "hopwins",
-            "cwd": "${workspaceFolder}/Python",
-            "args": [
-                "run",
-                "--config",
-                "${workspaceFolder}/Python/config.ini"
-            ],
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}/Python/src"
-            },
-            "console": "integratedTerminal",
-            "justMyCode": true
-        },
-        {
-            "type": "debugpy",
-            "request": "launch",
-            "name": "Python: Task Override",
-            "module": "hopwins",
-            "cwd": "${workspaceFolder}/Python",
-            "args": [
-                "run",
-                "--config",
-                "${workspaceFolder}/Python/config.ini",
-                "--task",
-                "${input:hopwinsPythonTask}"
-            ],
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}/Python/src"
-            },
-            "console": "integratedTerminal",
-            "justMyCode": true
-        },
-        {
-            "type": "debugpy",
-            "request": "launch",
-            "name": "Python: Tests",
-            "module": "pytest",
-            "cwd": "${workspaceFolder}/Python",
-            "args": [
-                "tests"
-            ],
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}/Python/src"
-            },
-            "console": "integratedTerminal",
-            "justMyCode": true
-        }
-    ],
-    "inputs": [
-        {
-            "id": "hopwinsPythonTask",
-            "type": "promptString",
-            "description": "Registered task name (see: hopwins tasks)",
-            "default": "cir_monitor"
         }
     ]
 }

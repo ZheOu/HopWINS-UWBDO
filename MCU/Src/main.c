@@ -34,6 +34,12 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define HOPWINS_PCB_PROFILE                    BOARD_PROFILE_FOLLOWER_FULL
+#define HOPWINS_INSTALLED_XO                   BOARD_CLOCK_XO_I2C
+#define HOPWINS_APP_WORKFLOW                   APP_WORKFLOW_DO_FOLLOWER
+#define HOPWINS_BOOT_UWB_CLOCK_DIAGNOSTIC      false
+#define HOPWINS_CIR_SAMPLE_COUNT               0U
+#define HOPWINS_CIR_PRE_FIRST_PATH_SAMPLES     64U
 
 /* USER CODE END PD */
 
@@ -76,6 +82,15 @@ static void MX_ICACHE_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+static const app_config_t s_app_config = {
+  .workflow = HOPWINS_APP_WORKFLOW,
+  .run_boot_uwb_clock_diagnostic =
+      HOPWINS_BOOT_UWB_CLOCK_DIAGNOSTIC,
+  .cir_sample_count = HOPWINS_CIR_SAMPLE_COUNT,
+  .cir_pre_first_path_samples =
+      HOPWINS_CIR_PRE_FIRST_PATH_SAMPLES,
+};
+
 /*
  * Temporary SiT3907 bring-up check. This lives in main.c on purpose: it is a
  * one-off wiring test, not application behaviour, and Services/README.md keeps
@@ -188,7 +203,12 @@ int main(void)
   MX_USART1_UART_Init();
   MX_ICACHE_Init();
   /* USER CODE BEGIN 2 */
-  board_init();
+  if (board_init(
+          HOPWINS_PCB_PROFILE,
+          HOPWINS_INSTALLED_XO) != BOARD_OK)
+  {
+    Error_Handler();
+  }
 
   /*
    * DCXO bench test. The one-shot sweep proves the wire in about five seconds;
@@ -199,15 +219,17 @@ int main(void)
    * monitor holds TIM2 at prescaler 0 for as long as it runs, so nothing else
    * can use the external clock counter meanwhile.
    */
-  if (clock_service_init(SIT3907_MODE_2, 0U) == SIT3907_STATUS_OK) {
-    (void)clock_service_run_pull_sweep(1000U);
-    APP_ReportClockSweep();
-    (void)clock_service_monitor_start(1000U, 5U);
-  } else {
-    APP_ReportClockSweep();
+  if (HOPWINS_INSTALLED_XO == BOARD_CLOCK_XO_CLKDP) {
+    if (clock_service_init(SIT3907_MODE_2, 0U) == SIT3907_STATUS_OK) {
+      (void)clock_service_run_pull_sweep(1000U);
+      APP_ReportClockSweep();
+      (void)clock_service_monitor_start(1000U, 5U);
+    } else {
+      APP_ReportClockSweep();
+    }
   }
 
-  app_init();
+  (void)app_init(&s_app_config);
   /* USER CODE END 2 */
 
   /* Infinite loop */

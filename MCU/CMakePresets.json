@@ -6,68 +6,33 @@
             "hidden": true,
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/build/${presetName}",
-            "toolchainFile": "${sourceDir}/cmake/gcc-arm-none-eabi.cmake",
+            "toolchainFile": "${sourceDir}/cmake/starm-clang.cmake"
+        },
+        {
+            "name": "Debug",
+            "displayName": "STM32 Debug",
+            "inherits": "base",
             "cacheVariables": {
-                "HOPWINS_ENABLE_BOOT_UWB_CLOCK_DIAGNOSTIC": false
+                "CMAKE_BUILD_TYPE": "Debug"
             }
         },
         {
-            "name": "Leader-Debug",
-            "displayName": "DO Leader (Debug)",
+            "name": "Release",
+            "displayName": "STM32 Release",
             "inherits": "base",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
-                "HOPWINS_BOARD_TARGET": "LEADER_UWB_ONLY",
-                "HOPWINS_APP_ROLE": "DO_LEADER"
-            }
-        },
-        {
-            "name": "Leader-Release",
-            "displayName": "DO Leader (Release)",
-            "inherits": "base",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "HOPWINS_BOARD_TARGET": "LEADER_UWB_ONLY",
-                "HOPWINS_APP_ROLE": "DO_LEADER"
-            }
-        },
-        {
-            "name": "Follower-Debug",
-            "displayName": "DO Follower (Debug)",
-            "inherits": "base",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
-                "HOPWINS_BOARD_TARGET": "FOLLOWER_FULL",
-                "HOPWINS_APP_ROLE": "DO_FOLLOWER"
-            }
-        },
-        {
-            "name": "Follower-Release",
-            "displayName": "DO Follower (Release)",
-            "inherits": "base",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "HOPWINS_BOARD_TARGET": "FOLLOWER_FULL",
-                "HOPWINS_APP_ROLE": "DO_FOLLOWER"
+                "CMAKE_BUILD_TYPE": "Release"
             }
         }
     ],
     "buildPresets": [
         {
-            "name": "Leader-Debug",
-            "configurePreset": "Leader-Debug"
+            "name": "Debug",
+            "configurePreset": "Debug"
         },
         {
-            "name": "Leader-Release",
-            "configurePreset": "Leader-Release"
-        },
-        {
-            "name": "Follower-Debug",
-            "configurePreset": "Follower-Debug"
-        },
-        {
-            "name": "Follower-Release",
-            "configurePreset": "Follower-Release"
+            "name": "Release",
+            "configurePreset": "Release"
         }
     ]
 }

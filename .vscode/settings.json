@@ -2,9 +2,25 @@
     "cmake.sourceDirectory": "${workspaceFolder}/MCU",
     "cmake.cmakePath": "cube-cmake",
     "cmake.useCMakePresets": "always",
+    "cmake.configureOnOpen": false,
+    "cmake.copyCompileCommands": "${workspaceFolder}/MCU/compile_commands.json",
     "cmake.preferredGenerators": [
         "Ninja"
     ],
+    "stm32cube-ide-build-cmake.ignoreCubeProjectDiscovery": true,
+    "stm32cube-ide-build-cmake.intellisense.enableAutomaticConfiguration": false,
+    "stm32cube-ide-clangd.path": "cube",
+    "stm32cube-ide-clangd.arguments": [
+        "starm-clangd"
+    ],
+    "C_Cpp.intelliSenseEngine": "disabled",
+    "vscode-serial-monitor.customBaudRates": [
+        5000000
+    ],
+    "vscode-serial-monitor.lineEnding": "\r\n",
+    "vscode-serial-monitor.dataBits": 8,
+    "vscode-serial-monitor.stopBits": 1,
+    "vscode-serial-monitor.parity": "none",
     "python.analysis.extraPaths": [
         "${workspaceFolder}/Python/src"
     ],
@@ -12,12 +28,5 @@
         "tests"
     ],
     "python.testing.cwd": "${workspaceFolder}/Python",
-    "python.testing.pytestEnabled": true,
-    "stm32cube-ide-clangd.path": "cube",
-    "stm32cube-ide-clangd.arguments": [
-        "starm-clangd",
-        "--query-driver=**/arm-none-eabi-gcc*",
-        "--query-driver=**/arm-none-eabi-g++*",
-        "--query-driver=**/starm-clang*"
-    ]
+    "python.testing.pytestEnabled": true
 }

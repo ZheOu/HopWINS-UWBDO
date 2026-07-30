@@ -5,24 +5,12 @@
   ******************************************************************************
   */
 
-#include "role_service.h"
+#include "do_follower_service.h"
 
 #include "board.h"
 #include "console_service.h"
 #include "fpga_service.h"
 #include "uwb_service.h"
-
-#ifndef HOPWINS_ENABLE_BOOT_UWB_CLOCK_DIAGNOSTIC
-#define HOPWINS_ENABLE_BOOT_UWB_CLOCK_DIAGNOSTIC 0
-#endif
-
-#if HOPWINS_APP_ROLE != HOPWINS_APP_ROLE_DO_FOLLOWER
-#error "do_follower_service.c compiled for the wrong application role"
-#endif
-
-#if !HOPWINS_BOARD_HAS_FPGA || !HOPWINS_BOARD_HAS_CLOCK_CONTROL
-#error "The DO follower role requires FPGA and clock-control hardware"
-#endif
 
 #define FOLLOWER_UWB_RETRY_INTERVAL_MS UINT32_C(1000)
 #define FOLLOWER_RX_HEALTH_INTERVAL_MS UINT32_C(5000)
@@ -31,17 +19,14 @@ static bool s_cir_export_active;
 static bool s_uwb_running;
 static uint32_t s_next_uwb_retry_ms;
 static uint32_t s_next_rx_health_ms;
+static app_config_t s_config;
 
 static void start_fpga(void);
 static bool start_uwb(void);
 
-const char *role_service_name(void)
+void do_follower_service_init(const app_config_t *config)
 {
-  return "DO-Follower";
-}
-
-void role_service_init(void)
-{
+  s_config = *config;
   s_cir_export_active = false;
   s_uwb_running = false;
   s_next_uwb_retry_ms = 0U;
@@ -54,7 +39,7 @@ void role_service_init(void)
   }
 }
 
-void role_service_process(void)
+void do_follower_service_process(void)
 {
   const uwb_service_state_t *state;
   const uwb_service_cir_capture_t *capture;
@@ -148,21 +133,26 @@ static void start_fpga(void)
 
 static bool start_uwb(void)
 {
+  uwb_service_cir_config_t cir_config = {
+    .sample_count = s_config.cir_sample_count,
+    .pre_first_path_samples = s_config.cir_pre_first_path_samples,
+  };
   dw3000_status_t status =
       uwb_service_init(board_uwb_get_platform());
 
-#if HOPWINS_ENABLE_BOOT_UWB_CLOCK_DIAGNOSTIC
-  if (status == DW3000_STATUS_OK) {
+  if ((status == DW3000_STATUS_OK) &&
+      s_config.run_boot_uwb_clock_diagnostic) {
     (void)uwb_service_run_clock_diagnostic();
   }
-#endif
 
   console_service_report_uwb(uwb_service_get_state());
   if (status != DW3000_STATUS_OK) {
     return false;
   }
 
-  status = uwb_service_start_cir_receive(&g_uwb_default_profile);
+  status = uwb_service_start_cir_receive(
+      &g_uwb_default_profile,
+      &cir_config);
   console_service_report_uwb_config(uwb_service_get_state());
   return status == DW3000_STATUS_OK;
 }

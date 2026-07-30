@@ -19,7 +19,11 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
+#if defined(__clang__)
+#define OPTSPEED
+#else
 #define OPTSPEED __attribute__((optimize("O3")))
+#endif
 
 #if 0
 #define DWT_API_ERROR_CHECK  /* API checks config input parameters */
@@ -332,7 +336,7 @@ static int32_t ull_pll_ch5_auto_cal(dwchip_t *dw, uint32_t coarse_code, uint16_t
 static int32_t ull_pll_ch9_auto_cal(dwchip_t *dw, uint32_t coarse_code, uint16_t sleep_us, uint8_t steps, uint8_t *p_num_steps_lock);
 static void ull_update_ststhreshold(dwchip_t *dw, uint8_t stsBlocks);
 static void ull_setstslength(dwchip_t *dw, dwt_sts_lengths_e sts_len);
-static inline uint8_t ull_getrxcode(dwchip_t *dw);
+static inline uint8_t __attribute__((unused)) ull_getrxcode(dwchip_t *dw);
 static void ull_configuresfdtype(dwchip_t *dw, uint8_t sfdType);
 static void ull_settxcode(dwchip_t *dw, uint8_t tx_code);
 static void ull_setrxcode(dwchip_t *dw, uint8_t rx_code);

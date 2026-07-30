@@ -23,7 +23,7 @@ void console_service_init(void)
   s_cir_chunk_index = 0U;
   s_cir_chunk_count = 0U;
   s_cir_frame_queued = false;
-  (void)console_protocol_write("\r\n=== HopWINS-UWBDO ===\r\n");
+  (void)console_protocol_write("\r\n=== HopWINS-UWBDO-MCU ===\r\n");
 }
 
 void console_service_process(void)

@@ -2,46 +2,46 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "CMake: Configure Leader-Debug",
+            "label": "MCU: Configure Debug",
             "type": "cmake",
             "command": "configure",
-            "preset": "Leader-Debug",
+            "preset": "Debug",
             "options": {
                 "cwd": "${workspaceFolder}/MCU"
             },
             "problemMatcher": []
         },
         {
-            "label": "CMake: Build Leader-Debug",
+            "label": "MCU: Build Debug",
             "type": "cmake",
             "command": "build",
-            "preset": "Leader-Debug",
+            "preset": "Debug",
             "options": {
                 "cwd": "${workspaceFolder}/MCU"
             },
-            "dependsOn": "CMake: Configure Leader-Debug",
+            "dependsOn": "MCU: Configure Debug",
             "dependsOrder": "sequence",
             "problemMatcher": "$gcc"
         },
         {
-            "label": "CMake: Configure Follower-Debug",
+            "label": "MCU: Configure Release",
             "type": "cmake",
             "command": "configure",
-            "preset": "Follower-Debug",
+            "preset": "Release",
             "options": {
                 "cwd": "${workspaceFolder}/MCU"
             },
             "problemMatcher": []
         },
         {
-            "label": "CMake: Build Follower-Debug",
+            "label": "MCU: Build Release",
             "type": "cmake",
             "command": "build",
-            "preset": "Follower-Debug",
+            "preset": "Release",
             "options": {
                 "cwd": "${workspaceFolder}/MCU"
             },
-            "dependsOn": "CMake: Configure Follower-Debug",
+            "dependsOn": "MCU: Configure Release",
             "dependsOrder": "sequence",
             "problemMatcher": "$gcc"
         }

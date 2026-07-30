@@ -37,12 +37,6 @@
 /* Entry Point */
 ENTRY(Reset_Handler)
 
-/* Highest address of the user mode stack */
-_estack = ORIGIN(RAM) + LENGTH(RAM);	/* end of "RAM" Ram type memory */
-
-_Min_Heap_Size = 0x200;      /* required amount of heap  */
-_Min_Stack_Size = 0x400; /* required amount of stack */
-
 /* Memories definition */
 MEMORY
 {
@@ -51,6 +45,11 @@ MEMORY
   FPGA_IMAGE (r) : ORIGIN = 0x081E0000, LENGTH = 128K
   SRAM4 (xrw)   : ORIGIN = 0x28000000,  LENGTH = 16K
 }
+
+/* Stack and heap symbols must follow MEMORY for LLVM lld. */
+_estack = ORIGIN(RAM) + LENGTH(RAM);
+_Min_Heap_Size = 0x200;
+_Min_Stack_Size = 0x400;
 
 /* Sections */
 SECTIONS

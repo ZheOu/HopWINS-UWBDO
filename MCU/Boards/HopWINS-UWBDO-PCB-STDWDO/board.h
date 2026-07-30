@@ -14,7 +14,6 @@ extern "C" {
 #endif
 
 /* Includes ------------------------------------------------------------------*/
-#include "board_config.h"
 #include "main.h"
 #include <stdbool.h>
 #include <stddef.h>
@@ -30,6 +29,12 @@ typedef enum {
   BOARD_BAD_ARG = -3,
   BOARD_BUSY = -4,
 } board_status_t;
+
+typedef enum {
+  BOARD_PROFILE_UWB_ONLY = 0,
+  BOARD_PROFILE_FOLLOWER_FULL,
+  BOARD_PROFILE_COUNT,
+} board_profile_t;
 
 typedef enum {
   BOARD_SPI_TARGET_UWB = 0,
@@ -119,7 +124,9 @@ typedef struct {
   board_timer_device_t external_clock_timer;
 } board_components_t;
 
-void board_init(void);
+board_status_t board_init(
+    board_profile_t profile,
+    board_clock_xo_t installed_xo);
 uint32_t board_get_time_ms(void);
 const board_capabilities_t *board_get_capabilities(void);
 const board_components_t *board_get_components(void);

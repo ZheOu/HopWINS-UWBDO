@@ -12,7 +12,9 @@
 extern "C" {
 #endif
 
-void app_init(void);
+#include "app_config.h"
+
+bool app_init(const app_config_t *config);
 void app_process(void);
 
 #ifdef __cplusplus

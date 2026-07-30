@@ -5,5 +5,5 @@
   "device": "STM32U585CIU6Q",
   "core": "Cortex-M33",
   "order": 0,
-  "toolchain": "GCC"
+  "toolchain": "CLANG"
 }

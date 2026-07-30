@@ -11,7 +11,7 @@
   * rising edge of SPI_SCK, so the bus must run in SPI mode 0 or mode 3, MSB
   * first, at 1 MHz to 25 MHz.
   *
-  * Signals used, named as in HopWINS-UWBDO.ioc / main.h:
+  * Signals used, named as in HopWINS-UWBDO-MCU.ioc / main.h:
   *
   *   iCE40 function  MCU pin macro       configured as
   *   --------------- ------------------- ------------------------------

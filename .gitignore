@@ -1,63 +1,39 @@
 # macOS
 .DS_Store
 
-# VS Code project settings
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
+# VS Code
+/.vscode/*
+!/.vscode/settings.json
+!/.vscode/tasks.json
+!/.vscode/launch.json
 
-# CMake and Ninja build output
-MCU/build/
-MCU/out/
-MCU/CMakeFiles/
-MCU/CMakeCache.txt
-MCU/cmake_install.cmake
-MCU/compile_commands.json
-MCU/build.ninja
-MCU/.ninja_*
-MCU/*.elf
-MCU/*.map
-MCU/*.hex
-MCU/*.list
+# MCU Project: STM32
+/MCU/.cache/
+/MCU/.vscode/
+/MCU/.mxproject
+/MCU/build/
+/MCU/compile_commands.json
+/MCU/CMakeUserPresets.json
+/MCU/mx.scratch/
 
-# User-specific CMake overrides
-MCU/CMakeUserPresets.json
+# Python Project
+/Python/.venv/
+/Python/**/__pycache__/
+/Python/.pytest_cache/
+/Python/.ruff_cache/
+/Python/.mypy_cache/
+/Python/**/*.egg-info/
+/Python/config.local.ini
 
-# Python virtual environments and caches
-Python/.venv/
-Python/**/__pycache__/
-Python/.pytest_cache/
-Python/.ruff_cache/
-Python/.mypy_cache/
-Python/**/*.egg-info/
-Python/config.local.ini
+# FPGA Project: Lattice Radiant
+/FPGA/*
+!/FPGA/HopWINS_UWBDO_FPGA.rdf
+!/FPGA/HopWINS_UWBDO_FPGA1.sty
+!/FPGA/source/
+!/FPGA/source/**
+!/FPGA/impl_1/
+/FPGA/impl_1/*
+!/FPGA/impl_1/HopWINS_UWBDO_FPGA_impl_1.bin
 
-# STM32CubeMX scratch data
-MCU/mx.scratch/
-
-# Lattice Radiant local state and generated project reports
-FPGA/.ng_run_manager.ini
-FPGA/.setting.ini
-FPGA/HopWINS_UWBDO_FPGA_tcl.html
-FPGA/HopWINS_UWBDO_FPGA_tcr.dir/
-FPGA/drc.log
-FPGA/promote.pfl
-FPGA/promote.xml
-FPGA/reportview.xml
-
-# Radiant implementation output: keep the MCU image and diffable reports
-FPGA/impl_1/*
-!FPGA/impl_1/HopWINS_UWBDO_FPGA_impl_1.bin
-!FPGA/impl_1/CPEReport*.txt
-!FPGA/impl_1/*.arearep
-!FPGA/impl_1/*.drc
-!FPGA/impl_1/*.ior
-!FPGA/impl_1/*.mrp
-!FPGA/impl_1/*.pad
-!FPGA/impl_1/*.par
-!FPGA/impl_1/*.pwrprd
-!FPGA/impl_1/*.tw1
-!FPGA/impl_1/*.twr
-!FPGA/impl_1/*.tws
-!FPGA/impl_1/*_lattice.srp
+# Paper Project: Latex
+/Paper/

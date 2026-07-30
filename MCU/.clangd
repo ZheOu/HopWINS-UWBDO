@@ -1,2 +1,4 @@
 CompileFlags:
-  CompilationDatabase: build/Debug
+  Compiler: clang
+  Remove:
+    - "--config=*"

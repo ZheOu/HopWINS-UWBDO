@@ -26,18 +26,10 @@
 #define UWB_RX_MAX_WATCHDOG_RESTARTS 3U
 #define UWB_RX_CAPTURE_SLOT_COUNT    2U
 
-#ifndef HOPWINS_UWB_CIR_SAMPLE_COUNT
-/* Zero exports the complete Ipatov accumulator. */
-#define HOPWINS_UWB_CIR_SAMPLE_COUNT 0U
-#endif
-
-#ifndef HOPWINS_UWB_CIR_PRE_FIRST_PATH_SAMPLES
-#define HOPWINS_UWB_CIR_PRE_FIRST_PATH_SAMPLES 64U
-#endif
-
 static const dw3000_platform_t *s_platform;
 static uwb_service_state_t s_state;
 static uwb_profile_t s_profile;
+static uwb_service_cir_config_t s_cir_config;
 static uint8_t s_tx_frame[UWB_TX_FRAME_LEN];
 typedef struct {
   uint8_t frame[DW3000_RX_FRAME_MAX_LEN];
@@ -108,6 +100,7 @@ dw3000_status_t uwb_service_init(const dw3000_platform_t *platform)
   s_next_receive_restart_time_ms = 0U;
   s_receive_start_failure_count = 0U;
   s_watchdog_restarts_without_frame = 0U;
+  s_cir_config = (uwb_service_cir_config_t){0};
 
   if (s_platform == NULL) {
     return s_state.init_status;
@@ -198,13 +191,14 @@ void uwb_service_stop_periodic_transmit(void)
 }
 
 dw3000_status_t uwb_service_start_cir_receive(
-    const uwb_profile_t *profile)
+    const uwb_profile_t *profile,
+    const uwb_service_cir_config_t *config)
 {
   uint16_t total_samples;
-  uint32_t requested_samples = HOPWINS_UWB_CIR_SAMPLE_COUNT;
+  uint32_t requested_samples;
   dw3000_status_t status;
 
-  if (profile == NULL) {
+  if ((profile == NULL) || (config == NULL)) {
     return DW3000_STATUS_BAD_ARG;
   }
   if ((s_platform == NULL) || (s_state.init_status != DW3000_STATUS_OK)) {
@@ -215,6 +209,8 @@ dw3000_status_t uwb_service_start_cir_receive(
   }
 
   s_profile = *profile;
+  s_cir_config = *config;
+  requested_samples = s_cir_config.sample_count;
   s_state.radio_config = profile->radio;
   s_state.config_status = dw3000_configure_radio(
       &s_state.device,
@@ -576,7 +572,7 @@ static uint16_t select_cir_sample_offset(
     uint16_t first_path_index_q10_6)
 {
   uint32_t first_path_sample = first_path_index_q10_6 >> 6U;
-  uint32_t pre_samples = HOPWINS_UWB_CIR_PRE_FIRST_PATH_SAMPLES;
+  uint32_t pre_samples = s_cir_config.pre_first_path_samples;
   uint32_t offset;
 
   if (capture_samples >= total_samples) {

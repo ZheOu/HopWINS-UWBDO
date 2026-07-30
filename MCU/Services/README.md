@@ -7,7 +7,7 @@ the board/component layers.
 ## Dependency direction
 
 ```text
-main.c -> App -> selected role service
+main.c -> App -> runtime workflow dispatcher
 role service -> device services / Console
 device services -> component drivers
 role service / Console -> Board
@@ -18,8 +18,8 @@ Board -> STM32 HAL
 Keep these boundaries when extending the firmware:
 
 - `main.c` only initializes CubeMX peripherals, the board, and `App`.
-- `App` calls the one role implementation selected by CMake; it contains no
-  board or radio-mode policy.
+- `App` dispatches the workflow selected by the `main.c` configuration; it
+  contains no board or radio-mode policy.
 - `Roles` own the Leader/Follower workflows and future transitions between DO
   operation and TWR calibration.
 - Component drivers contain chip protocol and configuration timing, but no HAL,
@@ -66,20 +66,20 @@ after checking `board_pc_tx_available()`. Do not encode CIR arrays as diagnostic
 hex text: that multiplies bandwidth and CPU cost. The current CRC-suffixed text
 messages remain intended for low-rate status and TX event reporting.
 
-The startup DW3000 clock test is independently controlled by the
-`HOPWINS_ENABLE_BOOT_UWB_CLOCK_DIAGNOSTIC` CMake option and is disabled by
-default for every product preset. Future interactive diagnostics should call
+The startup DW3000 clock test is controlled by
+`HOPWINS_BOOT_UWB_CLOCK_DIAGNOSTIC` in `main.c` and is disabled by default.
+Future interactive diagnostics should call
 `fpga_service_*()` and
 `uwb_service_*()` from command handlers instead of accessing component drivers
 directly.
 
-The `DO_LEADER` role owns periodic transmission. Radio tasks are selected by
+The `APP_WORKFLOW_DO_LEADER` workflow owns periodic transmission. Radio tasks are selected by
 the role state machine rather than independent CMake TX/RX switches, allowing
 the same firmware to pause DO and run occasional TWR calibration later.
 
 ## UWB RX and CIR export
 
-The `DO_FOLLOWER` role continuously receives UWB frames and captures CIR.
+The `APP_WORKFLOW_DO_FOLLOWER` workflow continuously receives UWB frames and captures CIR.
 After a CRC-correct frame, `uwb_service.c` records MCU SysTick, the external
 TIM2 reference counter, the DW3000 RX and system timestamps, RF port,
 `SYS_STATUS`, `RX_FINFO`, CIA status registers, carrier/clock offsets, Ipatov
@@ -88,10 +88,10 @@ RF Port 1 for all current TX and RX operations. A valid frame is still exported
 when optional register, diagnostic, or CIR reads fail; their signed status
 fields identify which metadata is unavailable.
 
-`HOPWINS_UWB_CIR_SAMPLE_COUNT` controls the capture size. Zero exports the
+`HOPWINS_CIR_SAMPLE_COUNT` in `main.c` controls the capture size. Zero exports the
 complete accumulator (1016 samples for the default PRF64 code). A smaller value
 captures a window around the detected first path;
-`HOPWINS_UWB_CIR_PRE_FIRST_PATH_SAMPLES` controls how many samples precede it.
+`HOPWINS_CIR_PRE_FIRST_PATH_SAMPLES` controls how many samples precede it.
 
 Console exports one frame packet followed by CRC-protected CIR chunks through
 the existing USART1 DMA queue. See
@@ -115,24 +115,18 @@ aborted and retried from its ring-buffer tail. The host HCIR parser discards
 any partial duplicate prefix by length and CRC before resynchronizing at the
 next valid magic.
 
-## Product configuration
+## Runtime configuration
 
-The three independent build dimensions are:
+Physical population and workflow are selected in `Src/main.c`:
 
-```text
-HOPWINS_BOARD_TARGET = LEADER_UWB_ONLY | FOLLOWER_FULL
-HOPWINS_APP_ROLE     = DO_LEADER | DO_FOLLOWER
-CMAKE_BUILD_TYPE     = Debug | Release
+```c
+#define HOPWINS_PCB_PROFILE   BOARD_PROFILE_FOLLOWER_FULL
+#define HOPWINS_INSTALLED_XO  BOARD_CLOCK_XO_I2C
+#define HOPWINS_APP_WORKFLOW  APP_WORKFLOW_DO_FOLLOWER
 ```
 
-`Boards/HopWINS-UWBDO-PCB-STDWDO/board_config.h` maps the selected physical
-target to compile-time FPGA, clock-control, external-counter, and installed-XO
-capabilities. Its adjacent `board_target.cmake` owns the corresponding CMake
-selection. Roles do not define hardware population. CMake rejects a
-`DO_FOLLOWER` role on hardware without FPGA and clock control.
-
-The supported product presets are `Leader-Debug`, `Leader-Release`,
-`Follower-Debug`, and `Follower-Release`. Leader builds omit the FPGA driver
-and image. Follower builds embed the image and verify that CDONE goes Low while
-reset is asserted, so an absent FPGA cannot be mistaken for configuration
-success.
+`board_init()` loads the selected PCB capability table and records whether the
+fitted oscillator uses I2C or CLKDP. The workflow dispatcher rejects a follower
+workflow on hardware without FPGA, clock control, and the external counter.
+CMake only selects Debug or Release; both builds contain all workflows,
+component drivers, and the FPGA image.
