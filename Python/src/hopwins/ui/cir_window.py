@@ -65,7 +65,8 @@ class CirMonitorWindow(QtWidgets.QMainWindow):
             ("profile", "Profile"),
             ("capture", "Capture"),
             ("rf_port", "RF port"),
-            ("rx_timestamp", "RX timestamp"),
+            ("rx_timestamp", "RX timestamp adjusted"),
+            ("raw_timestamp", "Raw/CIA correction"),
             ("mcu_time", "MCU time"),
             ("reference_time", "TIM2 time"),
             ("first_path", "First path"),
@@ -189,6 +190,14 @@ class CirMonitorWindow(QtWidgets.QMainWindow):
             f"{header.rf_port or '?'} (delay 0x{header.rx_antenna_delay:04X})"
         )
         self._labels["rx_timestamp"].setText(f"0x{header.rx_timestamp:010X}")
+        if header.raw_rx_timestamp_valid:
+            self._labels["raw_timestamp"].setText(
+                f"raw=0x{header.raw_rx_timestamp:010X} "
+                f"CIA={header.cia_correction_dtu} DTU "
+                f"CIA-FPI={header.cia_fpi_offset_dtu} DTU"
+            )
+        else:
+            self._labels["raw_timestamp"].setText("not captured")
         self._labels["mcu_time"].setText(f"{header.mcu_system_time_ms} ms")
         reference = (
             f"{header.reference_time_ms} ms"

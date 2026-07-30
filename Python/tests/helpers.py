@@ -24,7 +24,10 @@ def build_v2_packet(
     payload_sample_offset: int = 100,
     payload_sample_count: int = 0,
     capture_sample_count: int = 0,
+    raw_rx_timestamp: int | None = None,
 ) -> bytes:
+    if raw_rx_timestamp is not None:
+        flags |= PacketFlags.RAW_TIMESTAMP_VALID
     header = bytearray(V2_HEADER_LENGTH)
     header[0:4] = b"HCIR"
     header[4] = 2
@@ -73,5 +76,10 @@ def build_v2_packet(
     header[120] = 0
     header[121] = 0
     header[122] = 0
+    if raw_rx_timestamp is not None:
+        header[123:128] = (raw_rx_timestamp & ((1 << 40) - 1)).to_bytes(
+            5,
+            "little",
+        )
     packet = bytes(header) + payload
     return packet + struct.pack("<I", crc32_bzip2(packet))

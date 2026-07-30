@@ -14,6 +14,8 @@ MAX_HEADER_LENGTH = 512
 MAX_PAYLOAD_LENGTH = 8192
 CRC_LENGTH = 4
 INVALID_Q8_8 = -32768
+DW_TIMESTAMP_BITS = 40
+DW_TIMESTAMP_MASK = (1 << DW_TIMESTAMP_BITS) - 1
 
 
 class PacketType(IntEnum):
@@ -29,6 +31,7 @@ class PacketFlags(IntFlag):
     CIR_VALID = 0x0010
     REGISTERS_OK = 0x0020
     REFERENCE_TIME_VALID = 0x0040
+    RAW_TIMESTAMP_VALID = 0x0080
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +82,7 @@ class HcirHeader:
     diagnostic_status: int = 0
     cir_status: int = 0
     register_status: int = 0
+    raw_rx_timestamp: int = 0
 
     @property
     def first_path_index(self) -> float:
@@ -95,6 +99,28 @@ class HcirHeader:
     @property
     def first_path_power_dbm(self) -> float | None:
         return _q8_8_or_none(self.first_path_power_q8_8)
+
+    @property
+    def raw_rx_timestamp_valid(self) -> bool:
+        return bool(self.flags & PacketFlags.RAW_TIMESTAMP_VALID)
+
+    @property
+    def cia_correction_dtu(self) -> int | None:
+        if not self.raw_rx_timestamp_valid:
+            return None
+        value = (
+            self.rx_timestamp - self.raw_rx_timestamp + self.rx_antenna_delay
+        ) & DW_TIMESTAMP_MASK
+        if value & (1 << (DW_TIMESTAMP_BITS - 1)):
+            return value - (1 << DW_TIMESTAMP_BITS)
+        return value
+
+    @property
+    def cia_fpi_offset_dtu(self) -> int | None:
+        correction = self.cia_correction_dtu
+        if correction is None:
+            return None
+        return correction - self.first_path_index_q10_6
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,6 +174,7 @@ def parse_hcir_packet(raw: bytes) -> HcirPacket:
             "diagnostic_status": _i8(raw, 120),
             "cir_status": _i8(raw, 121),
             "register_status": _i8(raw, 122),
+            "raw_rx_timestamp": _u40(raw, 123),
         }
 
     header = HcirHeader(
@@ -159,7 +186,7 @@ def parse_hcir_packet(raw: bytes) -> HcirPacket:
         capture_id=_u32(raw, 12),
         chunk_index=_u16(raw, 16),
         chunk_count=_u16(raw, 18),
-        rx_timestamp=_u64(raw, 20) & ((1 << 40) - 1),
+        rx_timestamp=_u64(raw, 20) & DW_TIMESTAMP_MASK,
         system_status_low=_u32(raw, 28),
         carrier_integrator=_i32(raw, 32),
         clock_offset=_i16(raw, 36),
@@ -208,6 +235,10 @@ def _i32(data: bytes, offset: int) -> int:
 
 def _u64(data: bytes, offset: int) -> int:
     return struct.unpack_from("<Q", data, offset)[0]
+
+
+def _u40(data: bytes, offset: int) -> int:
+    return int.from_bytes(data[offset : offset + 5], "little")
 
 
 def _i8(data: bytes, offset: int) -> int:

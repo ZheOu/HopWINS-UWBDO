@@ -24,6 +24,7 @@
 #define CIR_PROTOCOL_FLAG_CIR_VALID      UINT16_C(0x0010)
 #define CIR_PROTOCOL_FLAG_REGISTERS_OK   UINT16_C(0x0020)
 #define CIR_PROTOCOL_FLAG_REFERENCE_TIME UINT16_C(0x0040)
+#define CIR_PROTOCOL_FLAG_RAW_TIMESTAMP  UINT16_C(0x0080)
 
 #define CIR_PROTOCOL_FORMAT_I24_Q24_LE   1U
 #define CIR_PROTOCOL_REFERENCE_TIM2_MS   1U
@@ -32,6 +33,7 @@ static uint8_t s_packet[CIR_PROTOCOL_MAX_PACKET_LEN];
 
 static void write_u16_le(uint8_t *destination, uint16_t value);
 static void write_u32_le(uint8_t *destination, uint32_t value);
+static void write_u40_le(uint8_t *destination, uint64_t value);
 static void write_u64_le(uint8_t *destination, uint64_t value);
 static board_status_t send_packet(
     const uwb_service_cir_capture_t *capture,
@@ -137,6 +139,7 @@ static board_status_t send_packet(
   if (capture->reference_time_valid) {
     flags |= CIR_PROTOCOL_FLAG_REFERENCE_TIME;
   }
+  flags |= CIR_PROTOCOL_FLAG_RAW_TIMESTAMP;
 
   memset(s_packet, 0, CIR_PROTOCOL_HEADER_LEN);
   memcpy(&s_packet[0], "HCIR", 4U);
@@ -208,6 +211,7 @@ static board_status_t send_packet(
   s_packet[120] = (uint8_t)(int8_t)capture->diagnostic_status;
   s_packet[121] = (uint8_t)(int8_t)capture->cir_status;
   s_packet[122] = (uint8_t)(int8_t)capture->register_status;
+  write_u40_le(&s_packet[123], capture->raw_receive_timestamp);
 
   if (payload_len != 0U) {
     memcpy(&s_packet[CIR_PROTOCOL_HEADER_LEN], payload, payload_len);
@@ -238,6 +242,13 @@ static void write_u32_le(uint8_t *destination, uint32_t value)
   destination[1] = (uint8_t)(value >> 8U);
   destination[2] = (uint8_t)(value >> 16U);
   destination[3] = (uint8_t)(value >> 24U);
+}
+
+static void write_u40_le(uint8_t *destination, uint64_t value)
+{
+  for (uint32_t i = 0U; i < 5U; i++) {
+    destination[i] = (uint8_t)(value >> (8U * i));
+  }
 }
 
 static void write_u64_le(uint8_t *destination, uint64_t value)

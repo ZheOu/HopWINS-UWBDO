@@ -479,6 +479,7 @@ static void process_cir_receive(void)
     .reference_time_ms = reference_time_ms,
     .reference_time_valid = reference_time_valid,
     .receive_timestamp = result.timestamp,
+    .raw_receive_timestamp = result.raw_timestamp,
     .system_status = result.system_status,
     .register_snapshot = register_snapshot,
     .register_status = register_status,

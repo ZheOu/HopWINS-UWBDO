@@ -138,6 +138,7 @@ typedef struct {
   bool ranging_frame;
   uint16_t frame_len;
   uint64_t timestamp;
+  uint64_t raw_timestamp;
   uint32_t system_status;
   int16_t clock_offset;
   int32_t carrier_integrator;

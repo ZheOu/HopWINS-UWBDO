@@ -75,7 +75,13 @@ class ProjectConfigTests(unittest.TestCase):
     def test_registry_uses_stable_explicit_task_names(self) -> None:
         self.assertEqual(
             tuple(TASKS),
-            ("cir_monitor", "raw_record", "replay", "list_ports"),
+            (
+                "cir_monitor",
+                "raw_record",
+                "capture_inspect",
+                "replay",
+                "list_ports",
+            ),
         )
 
 

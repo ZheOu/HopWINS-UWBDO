@@ -69,6 +69,12 @@ TASKS: dict[str, TaskDefinition] = {
             "hopwins.tasks.raw_record",
         ),
         TaskDefinition(
+            "capture_inspect",
+            "print RX metadata and a small CIR window around the FPI",
+            False,
+            "hopwins.tasks.capture_inspect",
+        ),
+        TaskDefinition(
             "replay",
             "replay a recorded HCIR stream in the CIR monitor",
             False,

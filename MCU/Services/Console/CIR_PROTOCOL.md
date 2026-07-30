@@ -22,7 +22,7 @@ hard-coded payload offset, so future protocol versions can extend the header.
 | 12 | 4 | Capture ID |
 | 16 | 2 | Chunk index |
 | 18 | 2 | Chunk count |
-| 20 | 8 | 40-bit DW3000 RX timestamp in the low bits |
+| 20 | 8 | 40-bit fully adjusted DW3000 `RX_STAMP` in the low bits |
 | 28 | 4 | `SYS_STATUS_LO` captured at RX completion |
 | 32 | 4 | Signed carrier integrator |
 | 36 | 2 | Signed clock offset |
@@ -60,7 +60,7 @@ hard-coded payload offset, so future protocol versions can extend the header.
 | 120 | 1 | Signed DW3000 diagnostic status |
 | 121 | 1 | Signed DW3000 CIR-read status |
 | 122 | 1 | Signed DW3000 register-snapshot status |
-| 123 | 5 | Reserved, zero |
+| 123 | 5 | 40-bit coarse `RX_RAWST`, valid when flag bit 7 is set |
 | 128 | N | RX frame or CIR payload |
 | 128+N | 4 | CRC32, little endian |
 
@@ -78,11 +78,46 @@ means success. RSSI and first-path power use `0x8000` when unavailable.
 | 4 | `0x0010` | CIR samples are valid |
 | 5 | `0x0020` | Register snapshot is valid |
 | 6 | `0x0040` | External TIM2 timestamp is valid |
+| 7 | `0x0080` | Coarse `RX_RAWST` is valid |
 
 The RX frame packet has one payload containing the received IEEE 802.15.4
 frame. CIR packets contain up to 80 complex samples. `capture_id`,
 `chunk_index`, and `chunk_count` let the host assemble out-of-order chunks and
 detect loss without depending on UART packet timing.
+
+## Timestamp and FPI interpretation
+
+The timestamp at offset 20 comes from `dwt_readrxtimestamp()`. It is the
+DW3000 `RX_STAMP`, not `RX_RAWST`: the CIA leading-edge correction has already
+been applied and the configured `RXANTD` has been subtracted. Adding the
+reported antenna delay back removes only antenna-delay compensation; it does
+not reconstruct the raw timestamp because the CIA correction remains.
+
+The first-path index is Q10.6 in accumulator-sample units. At PRF64 one
+accumulator sample corresponds to 64 DW3000 time units, approximately
+1.001603 ns, and one FPI fractional unit corresponds to one DW3000 time unit,
+approximately 15.65 ps. The FPI is relative to the complete accumulator;
+subtract `capture sample offset` before indexing the exported CIR window.
+
+The optional raw timestamp at offset 123 comes from
+`dwt_readrxtimestampunadj()`. Its least significant byte is zero, so it has
+coarse 8 ns resolution. For packets carrying both timestamps, define the
+signed modular CIA correction in DW3000 time units as:
+
+```text
+C_CIA = signed40(RX_STAMP - RX_RAWST + RXANTD)
+```
+
+The FPI Q10.6 integer is also expressed in 1/64-sample increments, equal to
+one DW3000 time unit at PRF64. The quantity `C_CIA - FPI_Q10_6` can therefore
+be plotted across packets to test whether the remaining preamble/SFD alignment
+term is constant for a fixed radio profile. Do not assume it is constant
+without measurement because the manual describes additional CIA adjustments.
+
+Separate `IP_TOA` and `STS_TOA` are not carried. With the current
+`STS_MODE=OFF` profile, `RX_STAMP` is the Ipatov CIA result and is also written
+to `IP_TOA`. A future STS-enabled profile should export both TOA values
+explicitly.
 
 ## CRC and resynchronization
 

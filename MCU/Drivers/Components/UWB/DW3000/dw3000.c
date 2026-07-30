@@ -547,6 +547,7 @@ dw3000_status_t dw3000_poll_receive(
 {
   uint8_t ranging_flags = 0U;
   uint8_t timestamp[5];
+  uint8_t raw_timestamp[5];
   uint32_t system_status;
   uint32_t error_mask = SYS_STATUS_ALL_RX_ERR | SYS_STATUS_ALL_RX_TO;
   uint16_t frame_len;
@@ -588,6 +589,7 @@ dw3000_status_t dw3000_poll_receive(
 
     dwt_readrxdata(frame, frame_len, 0U);
     dwt_readrxtimestamp(timestamp, DWT_COMPAT_NONE);
+    dwt_readrxtimestampunadj(raw_timestamp);
     result->clock_offset = dwt_readclockoffset();
     result->carrier_integrator = dwt_readcarrierintegrator();
     if (s_transport_error != 0) {
@@ -601,6 +603,11 @@ dw3000_status_t dw3000_poll_receive(
     result->frame_len = frame_len;
     result->timestamp =
         timestamp_from_little_endian(timestamp, (uint32_t)sizeof(timestamp)) &
+        DW3000_TIMESTAMP_MASK;
+    result->raw_timestamp =
+        timestamp_from_little_endian(
+            raw_timestamp,
+            (uint32_t)sizeof(raw_timestamp)) &
         DW3000_TIMESTAMP_MASK;
     s_rx_pending = false;
     s_rx_data_ready = true;

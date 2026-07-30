@@ -45,6 +45,7 @@ typedef struct {
   uint32_t reference_time_ms;
   bool reference_time_valid;
   uint64_t receive_timestamp;
+  uint64_t raw_receive_timestamp;
   uint32_t system_status;
   dw3000_rx_register_snapshot_t register_snapshot;
   dw3000_status_t register_status;
