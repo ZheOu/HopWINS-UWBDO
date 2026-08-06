@@ -9,7 +9,7 @@
 
 #include "board.h"
 #include "console_service.h"
-#include "role_service.h"
+#include "workflow_dispatcher.h"
 
 bool app_init(const app_config_t *config)
 {
@@ -18,22 +18,26 @@ bool app_init(const app_config_t *config)
   console_service_init();
   if (config == NULL) {
     console_service_write("APP ERROR: missing configuration\r\n");
+    console_service_finish_boot();
     return false;
   }
 
   console_service_report_firmware_profile(
-      board_get_capabilities(),
-      role_service_name(config->workflow),
+      board_get_description(),
+      workflow_dispatcher_name(config->workflow),
       HOPWINS_BUILD_TYPE_NAME);
-  initialized = role_service_init(config);
+  initialized = workflow_dispatcher_init(config);
   if (!initialized) {
     console_service_write("APP ERROR: workflow is incompatible with PCB\r\n");
+  } else {
+    console_service_write("BOOT: APPLICATION READY\r\n");
   }
+  console_service_finish_boot();
   return initialized;
 }
 
 void app_process(void)
 {
-  role_service_process();
+  workflow_dispatcher_process();
   console_service_process();
 }

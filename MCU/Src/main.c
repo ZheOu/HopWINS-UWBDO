@@ -23,8 +23,7 @@
 /* USER CODE BEGIN Includes */
 #include "app.h"
 #include "board.h"
-#include "clock_service.h"
-#include "console_protocol.h"
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -34,12 +33,19 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define HOPWINS_PCB_PROFILE                    BOARD_PROFILE_FOLLOWER_FULL
-#define HOPWINS_INSTALLED_XO                   BOARD_CLOCK_XO_I2C
+#define HOPWINS_BOARD_VARIANT                  BOARD_VARIANT_UWB_RF1_SIT5156
 #define HOPWINS_APP_WORKFLOW                   APP_WORKFLOW_DO_FOLLOWER
-#define HOPWINS_BOOT_UWB_CLOCK_DIAGNOSTIC      false
+#define HOPWINS_UWB_RF_MODE                    DW3000_RF_MODE_MANUAL_1
+#define HOPWINS_UWB_PDOA_MODE                  DW3000_PDOA_MODE_DISABLED
 #define HOPWINS_CIR_SAMPLE_COUNT               0U
 #define HOPWINS_CIR_PRE_FIRST_PATH_SAMPLES     64U
+#define HOPWINS_DO_CLOCK_TRACKING              true
+#define HOPWINS_DO_LOOP_STRATEGY               DO_LOOP_STRATEGY_ENDPOINT_SLOPE
+#define HOPWINS_DO_LOOP_WINDOW_INTERVALS       20U
+#define HOPWINS_TIMESTAMP_ESTIMATOR            UWB_TIMESTAMP_ESTIMATOR_DW_ADJUSTED
+#define HOPWINS_FOLLOWER_CAPTURE_FORMAT        SERIAL_CAPTURE_FORMAT_OFF
+#define HOPWINS_FOLLOWER_RF_AB_TEST            false
+#define HOPWINS_FOLLOWER_RF_AB_INTERVAL_MS     10000U
 
 /* USER CODE END PD */
 
@@ -63,6 +69,8 @@ TIM_HandleTypeDef htim2;
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
+static bool s_uart_ready;
+static const char *s_boot_stage = "RESET";
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -78,88 +86,39 @@ static void MX_TIM2_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_ICACHE_Init(void);
 /* USER CODE BEGIN PFP */
+static void APP_BootWrite(const char *text);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 static const app_config_t s_app_config = {
   .workflow = HOPWINS_APP_WORKFLOW,
-  .run_boot_uwb_clock_diagnostic =
-      HOPWINS_BOOT_UWB_CLOCK_DIAGNOSTIC,
+  .uwb_rf_mode = HOPWINS_UWB_RF_MODE,
+  .uwb_pdoa_mode = HOPWINS_UWB_PDOA_MODE,
   .cir_sample_count = HOPWINS_CIR_SAMPLE_COUNT,
   .cir_pre_first_path_samples =
       HOPWINS_CIR_PRE_FIRST_PATH_SAMPLES,
+  .do_clock_tracking = HOPWINS_DO_CLOCK_TRACKING,
+  .do_loop_strategy = HOPWINS_DO_LOOP_STRATEGY,
+  .do_loop_window_intervals = HOPWINS_DO_LOOP_WINDOW_INTERVALS,
+  .timestamp_estimator = HOPWINS_TIMESTAMP_ESTIMATOR,
+  .follower_capture_format = HOPWINS_FOLLOWER_CAPTURE_FORMAT,
+  .follower_rf_ab_test = HOPWINS_FOLLOWER_RF_AB_TEST,
+  .follower_rf_ab_interval_ms =
+      HOPWINS_FOLLOWER_RF_AB_INTERVAL_MS,
 };
 
-/*
- * Temporary SiT3907 bring-up check. This lives in main.c on purpose: it is a
- * one-off wiring test, not application behaviour, and Services/README.md keeps
- * roles free of board policy. Once the DP line is proven, move the call into
- * do_follower_service.c and the reporting into console_service.c, then delete
- * this block.
- */
-static void APP_ReportClockSweep(void)
+static void APP_BootWrite(const char *text)
 {
-  const clock_service_state_t *state = clock_service_get_state();
-  uint8_t storage[192];
-  console_protocol_message_t message;
-
-  console_protocol_message_init(&message, storage, sizeof(storage));
-  (void)console_protocol_append_text(&message, "DCXO INIT, STATUS=0x");
-  (void)console_protocol_append_hex(&message, (uint8_t)state->init_status, 2U);
-  (void)console_protocol_append_text(&message, ", STEP_PPB=0x");
-  (void)console_protocol_append_hex(&message, (uint32_t)state->step_ppb, 8U);
-  (void)console_protocol_append_text(&message, ", RANGE_PPB=0x");
-  (void)console_protocol_append_hex(&message, (uint32_t)state->range_ppb, 8U);
-  (void)console_protocol_send_with_crc(&message);
-
-  if (!state->sweep_valid) {
+  if (!s_uart_ready || (text == NULL)) {
     return;
   }
 
-  for (uint32_t i = 0U; i < state->sweep_count; i++) {
-    const clock_service_sweep_point_t *point = &state->sweep[i];
-
-    console_protocol_message_init(&message, storage, sizeof(storage));
-    (void)console_protocol_append_text(&message, "DCXO STEP=0x");
-    (void)console_protocol_append_hex(&message, i, 2U);
-    (void)console_protocol_append_text(&message, ", REQ_PPB=0x");
-    (void)console_protocol_append_hex(&message, (uint32_t)point->requested_ppb, 8U);
-    (void)console_protocol_append_text(&message, ", APPLIED_PPB=0x");
-    (void)console_protocol_append_hex(&message, (uint32_t)point->applied_ppb, 8U);
-    (void)console_protocol_append_text(&message, ", CODE=0x");
-    (void)console_protocol_append_hex(&message, (uint32_t)point->code, 8U);
-    (void)console_protocol_append_text(&message, ", COUNT=0x");
-    (void)console_protocol_append_hex(&message, point->counter_delta, 8U);
-    (void)console_protocol_append_text(&message, ", EXPECT=0x");
-    (void)console_protocol_append_hex(&message, point->expected_delta, 8U);
-    (void)console_protocol_append_text(&message, ", STATUS=0x");
-    (void)console_protocol_append_hex(&message, (uint8_t)point->status, 2U);
-    (void)console_protocol_send_with_crc(&message);
-  }
+  (void)board_pc_transmit_blocking(
+      (const uint8_t *)text,
+      strlen(text));
 }
 
-/* One line per gate, so the commanded pull can be watched taking effect. */
-static void APP_ReportClockMonitor(const clock_service_monitor_sample_t *sample)
-{
-  uint8_t storage[192];
-  console_protocol_message_t message;
-
-  console_protocol_message_init(&message, storage, sizeof(storage));
-  (void)console_protocol_append_text(&message, "DCXO MON, IDX=0x");
-  (void)console_protocol_append_hex(&message, sample->sample_index, 4U);
-  (void)console_protocol_append_text(&message, ", REQ_PPB=0x");
-  (void)console_protocol_append_hex(&message, (uint32_t)sample->requested_ppb, 8U);
-  (void)console_protocol_append_text(&message, ", MEAS_PPB=0x");
-  (void)console_protocol_append_hex(&message, (uint32_t)sample->measured_ppb, 8U);
-  (void)console_protocol_append_text(&message, ", COUNT=0x");
-  (void)console_protocol_append_hex(&message, sample->counter_delta, 8U);
-  (void)console_protocol_append_text(&message, ", GATE_MS=0x");
-  (void)console_protocol_append_hex(&message, sample->gate_ms, 4U);
-  (void)console_protocol_append_text(&message, ", STATUS=0x");
-  (void)console_protocol_append_hex(&message, (uint8_t)sample->pull_status, 2U);
-  (void)console_protocol_send_with_crc(&message);
-}
 /* USER CODE END 0 */
 
 /**
@@ -194,42 +153,30 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_CRC_Init();
   MX_GPDMA1_Init();
+  MX_USART1_UART_Init();
+  MX_CRC_Init();
   MX_FLASH_Init();
   MX_I2C2_Init();
   MX_SPI1_Init();
   MX_TIM2_Init();
-  MX_USART1_UART_Init();
   MX_ICACHE_Init();
   /* USER CODE BEGIN 2 */
-  if (board_init(
-          HOPWINS_PCB_PROFILE,
-          HOPWINS_INSTALLED_XO) != BOARD_OK)
+  APP_BootWrite("BOOT: PERIPHERALS READY\r\n");
+  s_boot_stage = "BOARD";
+  APP_BootWrite("BOOT: BOARD INIT\r\n");
+  if (board_init(HOPWINS_BOARD_VARIANT) != BOARD_OK)
   {
     Error_Handler();
   }
 
-  /*
-   * DCXO bench test. The one-shot sweep proves the wire in about five seconds;
-   * the monitor then streams one measurement per second forever, cycling the
-   * pull every five gates, which is what makes the change visible live.
-   *
-   * Both run before app_init() so TIM2 and the DP pin are uncontended. Note the
-   * monitor holds TIM2 at prescaler 0 for as long as it runs, so nothing else
-   * can use the external clock counter meanwhile.
-   */
-  if (HOPWINS_INSTALLED_XO == BOARD_CLOCK_XO_CLKDP) {
-    if (clock_service_init(SIT3907_MODE_2, 0U) == SIT3907_STATUS_OK) {
-      (void)clock_service_run_pull_sweep(1000U);
-      APP_ReportClockSweep();
-      (void)clock_service_monitor_start(1000U, 5U);
-    } else {
-      APP_ReportClockSweep();
-    }
+  APP_BootWrite("BOOT: BOARD READY\r\n");
+  s_boot_stage = "APPLICATION";
+  APP_BootWrite("BOOT: APP INIT\r\n");
+  if (!app_init(&s_app_config)) {
+    Error_Handler();
   }
-
-  (void)app_init(&s_app_config);
+  s_boot_stage = "RUN";
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -239,11 +186,6 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    clock_service_monitor_sample_t clock_sample;
-
-    if (clock_service_monitor_poll(&clock_sample)) {
-      APP_ReportClockMonitor(&clock_sample);
-    }
     app_process();
   }
   /* USER CODE END 3 */
@@ -332,7 +274,7 @@ static void MX_CRC_Init(void)
 {
 
   /* USER CODE BEGIN CRC_Init 0 */
-
+  s_boot_stage = "CRC";
   /* USER CODE END CRC_Init 0 */
 
   /* USER CODE BEGIN CRC_Init 1 */
@@ -391,7 +333,7 @@ static void MX_FLASH_Init(void)
 {
 
   /* USER CODE BEGIN FLASH_Init 0 */
-
+  s_boot_stage = "FLASH";
   /* USER CODE END FLASH_Init 0 */
 
   /* USER CODE BEGIN FLASH_Init 1 */
@@ -420,7 +362,7 @@ static void MX_I2C2_Init(void)
 {
 
   /* USER CODE BEGIN I2C2_Init 0 */
-
+  s_boot_stage = "I2C2";
   /* USER CODE END I2C2_Init 0 */
 
   /* USER CODE BEGIN I2C2_Init 1 */
@@ -468,7 +410,7 @@ static void MX_ICACHE_Init(void)
 {
 
   /* USER CODE BEGIN ICACHE_Init 0 */
-
+  s_boot_stage = "ICACHE";
   /* USER CODE END ICACHE_Init 0 */
 
   /* USER CODE BEGIN ICACHE_Init 1 */
@@ -500,7 +442,7 @@ static void MX_SPI1_Init(void)
 {
 
   /* USER CODE BEGIN SPI1_Init 0 */
-
+  s_boot_stage = "SPI1";
   /* USER CODE END SPI1_Init 0 */
 
   SPI_AutonomousModeConfTypeDef HAL_SPI_AutonomousMode_Cfg_Struct = {0};
@@ -557,7 +499,7 @@ static void MX_TIM2_Init(void)
 {
 
   /* USER CODE BEGIN TIM2_Init 0 */
-
+  s_boot_stage = "TIM2";
   /* USER CODE END TIM2_Init 0 */
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
@@ -605,7 +547,7 @@ static void MX_USART1_UART_Init(void)
 {
 
   /* USER CODE BEGIN USART1_Init 0 */
-
+  s_boot_stage = "USART1";
   /* USER CODE END USART1_Init 0 */
 
   /* USER CODE BEGIN USART1_Init 1 */
@@ -639,7 +581,8 @@ static void MX_USART1_UART_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN USART1_Init 2 */
-
+  s_uart_ready = true;
+  APP_BootWrite("\r\nBOOT: UART READY, BAUD=5000000\r\n");
   /* USER CODE END USART1_Init 2 */
 
 }
@@ -726,6 +669,18 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void Fatal_Error_Handler(const char *reason)
+{
+  if (s_uart_ready) {
+    board_pc_tx_abort();
+  }
+  APP_BootWrite("\r\nFATAL: ");
+  APP_BootWrite((reason != NULL) ? reason : "UNKNOWN");
+  APP_BootWrite("\r\n");
+  __disable_irq();
+  while (1) {
+  }
+}
 
 /* USER CODE END 4 */
 
@@ -736,11 +691,7 @@ static void MX_GPIO_Init(void)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
-  __disable_irq();
-  while (1)
-  {
-  }
+  Fatal_Error_Handler(s_boot_stage);
   /* USER CODE END Error_Handler_Debug */
 }
 

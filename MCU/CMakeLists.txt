@@ -77,21 +77,26 @@ add_subdirectory(Services)
 
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Boards/HopWINS-UWBDO-PCB-STDWDO/board.c
-    Drivers/Components/CLK/SiT3907ACP2F-25NZ-38.400000/sit3907.c
-    Drivers/Components/FPGA/ICE40UP5K-SG48I/ice40.c
-    Drivers/Components/UWB/DW3220TR13/deca_compat.c
-    Drivers/Components/UWB/DW3220TR13/deca_interface.c
-    Drivers/Components/UWB/DW3220TR13/deca_rsl.c
-    Drivers/Components/UWB/DW3220TR13/dw3000.c
-    Drivers/Components/UWB/DW3220TR13/dw3000_device.c
+    Drivers/Devices/CLK/SiT3907ACP2F-25NZ-38.400000/sit3907.c
+    Drivers/Devices/CLK/SiT5156AC-FA025JH-38.400000/sit5156.c
+    Drivers/Devices/FPGA/ICE40UP5K-SG48I/ice40up5k.c
+    # Project-maintained DW3220 interface and Qorvo platform bridge.
+    Drivers/Devices/UWB/DW3220TR13/dw3000.c
+    Drivers/Devices/UWB/DW3220TR13/dw3000_qorvo_adapter.c
+    # Qorvo-derived DW3000 core and compatibility API.
+    Drivers/Devices/UWB/DW3220TR13/deca_compat.c
+    Drivers/Devices/UWB/DW3220TR13/deca_interface.c
+    Drivers/Devices/UWB/DW3220TR13/deca_rsl.c
+    Drivers/Devices/UWB/DW3220TR13/dw3000_device.c
     "${FPGA_IMAGE_OBJECT}"
 )
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     Boards/HopWINS-UWBDO-PCB-STDWDO
-    Drivers/Components/CLK/SiT3907ACP2F-25NZ-38.400000
-    Drivers/Components/FPGA/ICE40UP5K-SG48I
-    Drivers/Components/UWB/DW3220TR13
+    Drivers/Devices/CLK/SiT3907ACP2F-25NZ-38.400000
+    Drivers/Devices/CLK/SiT5156AC-FA025JH-38.400000
+    Drivers/Devices/FPGA/ICE40UP5K-SG48I
+    Drivers/Devices/UWB/DW3220TR13
 )
 
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE

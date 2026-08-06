@@ -13,6 +13,7 @@ extern "C" {
 #endif
 
 #include "app_config.h"
+#include <stdbool.h>
 
 bool app_init(const app_config_t *config);
 void app_process(void);

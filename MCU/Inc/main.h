@@ -53,6 +53,7 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
+void Fatal_Error_Handler(const char *reason);
 
 /* USER CODE END EFP */
 

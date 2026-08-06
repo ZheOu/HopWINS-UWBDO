@@ -8,12 +8,15 @@
 /* Includes ------------------------------------------------------------------*/
 #include "board.h"
 #include "dw3000.h"
-#include "ice40.h"
+#include "ice40up5k.h"
+#include "main.h"
+#include "sit5156.h"
 
 #include <string.h>
 
 #define BOARD_PC_TX_BUFFER_SIZE UINT32_C(16384)
 #define BOARD_PC_TX_DMA_TIMEOUT_MS UINT32_C(100)
+#define BOARD_FPGA_SPI_CHUNK_BYTES ((size_t)1024)
 
 /* Peripheral Handles --------------------------------------------------------*/
 extern SPI_HandleTypeDef hspi1;
@@ -21,6 +24,64 @@ extern I2C_HandleTypeDef hi2c2;
 extern UART_HandleTypeDef huart1;
 extern TIM_HandleTypeDef htim2;
 extern CRC_HandleTypeDef hcrc;
+
+typedef enum {
+  BOARD_SPI_TARGET_UWB = 0,
+  BOARD_SPI_TARGET_FPGA,
+} board_spi_target_t;
+
+typedef struct {
+  GPIO_TypeDef *port;
+  uint16_t pin;
+  GPIO_PinState active_state;
+} board_gpio_t;
+
+typedef struct {
+  SPI_HandleTypeDef *hspi;
+  board_gpio_t cs;
+  uint32_t timeout_ms;
+} board_spi_device_t;
+
+typedef struct {
+  I2C_HandleTypeDef *hi2c;
+  uint16_t address_7bit;
+  uint32_t timeout_ms;
+} board_i2c_device_t;
+
+typedef struct {
+  UART_HandleTypeDef *huart;
+  uint32_t timeout_ms;
+} board_uart_device_t;
+
+typedef struct {
+  TIM_HandleTypeDef *htim;
+} board_timer_device_t;
+
+typedef struct {
+  board_spi_device_t spi;
+  board_gpio_t reset_n;
+  board_gpio_t irq;
+} board_uwb_t;
+
+typedef struct {
+  board_spi_device_t spi;
+  board_gpio_t user_enable;
+  board_gpio_t reset_n;
+  board_gpio_t done;
+} board_fpga_t;
+
+typedef struct {
+  board_i2c_device_t i2c;
+  board_gpio_t clkdp;
+} board_clock_t;
+
+typedef struct {
+  board_uwb_t uwb;
+  board_fpga_t fpga;
+  board_clock_t clock;
+  board_uart_device_t pc_uart;
+  board_timer_device_t external_clock_timer;
+} board_components_t;
 
 static int32_t board_uwb_hardware_reset(void);
 static int32_t board_uwb_spi_set_slow_rate(void);
@@ -39,15 +100,36 @@ static int32_t board_uwb_spi_write(
     uint16_t trailer_len);
 static void board_fpga_set_creset_b(bool high);
 static bool board_fpga_get_cdone(void);
-static void board_fpga_spi_select(void);
+static bool board_fpga_spi_select(void);
 static void board_fpga_spi_deselect(void);
-static int32_t board_fpga_spi_write(const uint8_t *data, uint16_t len);
-static void board_delay_ms(uint32_t delay_ms);
-static void board_delay_us(uint32_t delay_us);
-static uint32_t board_time_ms(void);
-static int32_t board_reference_time_ms(uint32_t *timestamp_ms);
+static bool board_fpga_spi_write(const uint8_t *data, size_t len);
+static void board_gpio_write(const board_gpio_t *gpio, bool active);
+static bool board_gpio_read(const board_gpio_t *gpio);
+static void board_spi_deselect_all(void);
+static board_status_t board_spi_select(board_spi_target_t target);
+static void board_spi_deselect(board_spi_target_t target);
+static board_status_t board_spi_receive_after_header(
+    board_spi_target_t target,
+    const uint8_t *header,
+    size_t header_len,
+    uint8_t *rx,
+    size_t rx_len);
+static board_status_t board_i2c_mem_write_7bit(
+    const board_i2c_device_t *device,
+    uint16_t mem_addr,
+    uint16_t mem_addr_size,
+    const uint8_t *data,
+    size_t len);
+static board_status_t board_i2c_mem_read_7bit(
+    const board_i2c_device_t *device,
+    uint16_t mem_addr,
+    uint16_t mem_addr_size,
+    uint8_t *data,
+    size_t len);
+static board_status_t board_external_clock_counter_start(void);
 static board_status_t board_pc_tx_start(void);
 static uint32_t board_pc_tx_used(uint32_t head, uint32_t tail);
+static bool board_pc_tx_busy(void);
 
 static uint8_t s_pc_tx_buffer[BOARD_PC_TX_BUFFER_SIZE]
     __attribute__((aligned(32)));
@@ -57,28 +139,43 @@ static volatile uint32_t s_pc_tx_in_flight;
 static volatile uint32_t s_pc_tx_started_ms;
 static volatile uint32_t s_pc_tx_errors;
 static volatile bool s_pc_tx_dma_active;
-static bool s_external_clock_counter_started;
+static bool s_external_clock_counter_running;
 
-static const board_capabilities_t s_profiles[BOARD_PROFILE_COUNT] = {
-  [BOARD_PROFILE_UWB_ONLY] = {
-    .name = "Leader-UwbOnly",
-    .installed_xo = BOARD_CLOCK_XO_NONE,
-    .has_fpga = false,
-    .has_clock_control = false,
-    .has_external_clock_counter = false,
+static const board_description_t s_variants[BOARD_VARIANT_COUNT] = {
+  [BOARD_VARIANT_UWB_RF1] = {
+    .name = "UWB-RF1",
+    .clock_device = BOARD_CLOCK_DEVICE_NONE,
+    .available_rf_paths = BOARD_RF_PATH_1,
+    .fpga_fitted = false,
+    .external_clock_counter_connected = false,
   },
-  [BOARD_PROFILE_FOLLOWER_FULL] = {
-    .name = "Follower-Full",
-    .installed_xo = BOARD_CLOCK_XO_I2C,
-    .has_fpga = true,
-    .has_clock_control = true,
-    .has_external_clock_counter = true,
+  [BOARD_VARIANT_UWB_RF1_SIT5156] = {
+    .name = "UWB-RF1-SiT5156",
+    .clock_device = BOARD_CLOCK_DEVICE_SIT5156,
+    .available_rf_paths = BOARD_RF_PATH_1,
+    .fpga_fitted = false,
+    .external_clock_counter_connected = true,
+  },
+  [BOARD_VARIANT_FULL_SIT5156] = {
+    .name = "Full-SiT5156",
+    .clock_device = BOARD_CLOCK_DEVICE_SIT5156,
+    .available_rf_paths = BOARD_RF_PATH_BOTH,
+    .fpga_fitted = true,
+    .external_clock_counter_connected = true,
+  },
+  [BOARD_VARIANT_FULL_SIT3907] = {
+    .name = "Full-SiT3907",
+    .clock_device = BOARD_CLOCK_DEVICE_SIT3907,
+    .available_rf_paths = BOARD_RF_PATH_BOTH,
+    .fpga_fitted = true,
+    .external_clock_counter_connected = true,
   },
 };
 
-static board_capabilities_t s_capabilities = {
+static board_description_t s_description = {
   .name = "Unconfigured",
-  .installed_xo = BOARD_CLOCK_XO_NONE,
+  .clock_device = BOARD_CLOCK_DEVICE_NONE,
+  .available_rf_paths = BOARD_RF_PATH_NONE,
 };
 
 static board_components_t s_board = {
@@ -97,22 +194,17 @@ static board_components_t s_board = {
       .cs = {SPI1_CSFPGA_GPIO_Port, SPI1_CSFPGA_Pin, GPIO_PIN_RESET},
       .timeout_ms = 10U,
     },
-    .enable = {GPIO_FPGAEN_GPIO_Port, GPIO_FPGAEN_Pin, GPIO_PIN_SET},
+    .user_enable = {GPIO_FPGAEN_GPIO_Port, GPIO_FPGAEN_Pin, GPIO_PIN_SET},
     .reset_n = {GPIO_FPGARST_GPIO_Port, GPIO_FPGARST_Pin, GPIO_PIN_SET},
     .done = {GPIO_FPGADONE_GPIO_Port, GPIO_FPGADONE_Pin, GPIO_PIN_SET},
   },
   .clock = {
-    .installed_xo = BOARD_CLOCK_XO_NONE,
-    .i2c_xo = {
-      .i2c = {
-        .hi2c = &hi2c2,
-        .address_7bit = 0U,
-        .timeout_ms = 10U,
-      },
+    .i2c = {
+      .hi2c = &hi2c2,
+      .address_7bit = SIT5156_I2C_ADDRESS_7BIT,
+      .timeout_ms = 10U,
     },
-    .clkdp_xo = {
-      .dp = {GPIO_CLKDP_GPIO_Port, GPIO_CLKDP_Pin, GPIO_PIN_SET},
-    },
+    .clkdp = {GPIO_CLKDP_GPIO_Port, GPIO_CLKDP_Pin, GPIO_PIN_SET},
   },
   .pc_uart = {
     .huart = &huart1,
@@ -131,15 +223,13 @@ static const dw3000_platform_t s_dw3000_platform = {
   .spi_write = board_uwb_spi_write,
   .delay_ms = board_delay_ms,
   .delay_us = board_delay_us,
-  .get_time_ms = board_time_ms,
-  .get_reference_time_ms = board_reference_time_ms,
   .lock = NULL,
   .unlock = NULL,
 };
 
-static const ice40_platform_t s_ice40_platform = {
+static const ice40up5k_platform_t s_ice40up5k_platform = {
   .set_creset_b = board_fpga_set_creset_b,
-  .get_cdone = board_fpga_get_cdone,
+  .read_cdone = board_fpga_get_cdone,
   .spi_select = board_fpga_spi_select,
   .spi_deselect = board_fpga_spi_deselect,
   .spi_write = board_fpga_spi_write,
@@ -171,7 +261,7 @@ static const board_spi_device_t *spi_device_from_target(board_spi_target_t targe
     case BOARD_SPI_TARGET_UWB:
       return &s_board.uwb.spi;
     case BOARD_SPI_TARGET_FPGA:
-      return s_capabilities.has_fpga ? &s_board.fpga.spi : NULL;
+      return s_description.fpga_fitted ? &s_board.fpga.spi : NULL;
     default:
       return NULL;
   }
@@ -199,39 +289,33 @@ static void board_uwb_reset_release(void)
       GPIO_PIN_SET);
 }
 
-board_status_t board_init(
-    board_profile_t profile,
-    board_clock_xo_t installed_xo)
+board_status_t board_init(board_variant_t variant)
 {
-  if ((uint32_t)profile >= (uint32_t)BOARD_PROFILE_COUNT) {
+  if ((uint32_t)variant >= (uint32_t)BOARD_VARIANT_COUNT) {
     return BOARD_BAD_ARG;
   }
 
-  s_capabilities = s_profiles[profile];
-  if ((!s_capabilities.has_clock_control &&
-       (installed_xo != BOARD_CLOCK_XO_NONE)) ||
-      ((uint32_t)installed_xo > (uint32_t)BOARD_CLOCK_XO_CLKDP)) {
-    return BOARD_BAD_ARG;
-  }
-  s_capabilities.installed_xo = installed_xo;
-  s_board.clock.installed_xo = installed_xo;
+  s_description = s_variants[variant];
   s_pc_tx_head = 0U;
   s_pc_tx_tail = 0U;
   s_pc_tx_in_flight = 0U;
   s_pc_tx_started_ms = 0U;
   s_pc_tx_errors = 0U;
   s_pc_tx_dma_active = false;
-  s_external_clock_counter_started = false;
+  s_external_clock_counter_running = false;
 
   board_spi_deselect_all();
-  if (s_capabilities.has_fpga) {
-    board_gpio_write(&s_board.fpga.enable, false);
+  if (s_description.fpga_fitted) {
+    board_gpio_write(&s_board.fpga.user_enable, false);
     board_gpio_write(&s_board.fpga.reset_n, false);
   }
   board_uwb_reset_release();
-  board_clock_select_xo(installed_xo);
-  if (s_capabilities.has_external_clock_counter) {
-    (void)board_external_clock_counter_start();
+  if (s_description.clock_device == BOARD_CLOCK_DEVICE_SIT3907) {
+    board_clkdp_set_mode(BOARD_CLKDP_TRISTATE);
+  }
+  if (s_description.external_clock_counter_connected &&
+      (board_external_clock_counter_start() != BOARD_OK)) {
+    return BOARD_ERROR;
   }
   return BOARD_OK;
 }
@@ -246,57 +330,27 @@ const struct dw3000_platform *board_uwb_get_platform(void)
   return &s_dw3000_platform;
 }
 
-const struct ice40_platform *board_fpga_get_platform(void)
+const struct ice40up5k_platform *board_fpga_get_platform(void)
 {
-  return s_capabilities.has_fpga ? &s_ice40_platform : NULL;
+  return s_description.fpga_fitted ? &s_ice40up5k_platform : NULL;
 }
 
-void board_clock_select_xo(board_clock_xo_t installed_xo)
+board_status_t board_fpga_set_user_enabled(bool enabled)
 {
-  if (!s_capabilities.has_clock_control) {
-    s_board.clock.installed_xo = BOARD_CLOCK_XO_NONE;
-    return;
+  if (!s_description.fpga_fitted) {
+    return BOARD_ERROR;
   }
 
-  s_board.clock.installed_xo = installed_xo;
-  board_clkdp_set_mode(BOARD_CLKDP_TRISTATE);
+  board_gpio_write(&s_board.fpga.user_enable, enabled);
+  return BOARD_OK;
 }
 
-const board_capabilities_t *board_get_capabilities(void)
+const board_description_t *board_get_description(void)
 {
-  return &s_capabilities;
+  return &s_description;
 }
 
-const board_components_t *board_get_components(void)
-{
-  return &s_board;
-}
-
-board_clock_xo_t board_clock_get_selected_xo(void)
-{
-  return s_board.clock.installed_xo;
-}
-
-const board_i2c_device_t *board_clock_get_i2c_xo(void)
-{
-  if (!s_capabilities.has_clock_control ||
-      (s_board.clock.installed_xo != BOARD_CLOCK_XO_I2C)) {
-    return NULL;
-  }
-
-  return &s_board.clock.i2c_xo.i2c;
-}
-
-void board_clock_i2c_xo_set_address(uint16_t address_7bit)
-{
-  if (!s_capabilities.has_clock_control) {
-    return;
-  }
-
-  s_board.clock.i2c_xo.i2c.address_7bit = address_7bit;
-}
-
-void board_gpio_write(const board_gpio_t *gpio, bool active)
+static void board_gpio_write(const board_gpio_t *gpio, bool active)
 {
   if ((gpio == NULL) || (gpio->port == NULL)) {
     return;
@@ -305,7 +359,7 @@ void board_gpio_write(const board_gpio_t *gpio, bool active)
   HAL_GPIO_WritePin(gpio->port, gpio->pin, active ? gpio->active_state : inactive_state(gpio->active_state));
 }
 
-bool board_gpio_read(const board_gpio_t *gpio)
+static bool board_gpio_read(const board_gpio_t *gpio)
 {
   if ((gpio == NULL) || (gpio->port == NULL)) {
     return false;
@@ -314,15 +368,15 @@ bool board_gpio_read(const board_gpio_t *gpio)
   return HAL_GPIO_ReadPin(gpio->port, gpio->pin) == gpio->active_state;
 }
 
-void board_spi_deselect_all(void)
+static void board_spi_deselect_all(void)
 {
   board_gpio_write(&s_board.uwb.spi.cs, false);
-  if (s_capabilities.has_fpga) {
+  if (s_description.fpga_fitted) {
     board_gpio_write(&s_board.fpga.spi.cs, false);
   }
 }
 
-board_status_t board_spi_select(board_spi_target_t target)
+static board_status_t board_spi_select(board_spi_target_t target)
 {
   const board_spi_device_t *dev = spi_device_from_target(target);
 
@@ -335,7 +389,7 @@ board_status_t board_spi_select(board_spi_target_t target)
   return BOARD_OK;
 }
 
-void board_spi_deselect(board_spi_target_t target)
+static void board_spi_deselect(board_spi_target_t target)
 {
   const board_spi_device_t *dev = spi_device_from_target(target);
 
@@ -346,29 +400,7 @@ void board_spi_deselect(board_spi_target_t target)
   board_gpio_write(&dev->cs, false);
 }
 
-board_status_t board_spi_transmit(board_spi_target_t target, const uint8_t *tx, size_t len)
-{
-  const board_spi_device_t *dev = spi_device_from_target(target);
-  uint16_t tx_len = checked_len(len);
-  board_status_t result;
-
-  if ((dev == NULL) || (tx == NULL && len != 0U) || (tx_len == 0U && len != 0U)) {
-    return BOARD_BAD_ARG;
-  }
-
-  if (len == 0U) {
-    return BOARD_OK;
-  }
-
-  result = board_spi_select(target);
-  if (result == BOARD_OK) {
-    result = hal_to_board_status(HAL_SPI_Transmit(dev->hspi, (uint8_t *)tx, tx_len, dev->timeout_ms));
-  }
-  board_spi_deselect(target);
-  return result;
-}
-
-board_status_t board_spi_receive_after_header(
+static board_status_t board_spi_receive_after_header(
     board_spi_target_t target,
     const uint8_t *header,
     size_t header_len,
@@ -400,29 +432,7 @@ board_status_t board_spi_receive_after_header(
   return result;
 }
 
-board_status_t board_spi_transmit_receive(board_spi_target_t target, const uint8_t *tx, uint8_t *rx, size_t len)
-{
-  const board_spi_device_t *dev = spi_device_from_target(target);
-  uint16_t xfer_len = checked_len(len);
-  board_status_t result;
-
-  if ((dev == NULL) || (tx == NULL && len != 0U) || (rx == NULL && len != 0U) || (xfer_len == 0U && len != 0U)) {
-    return BOARD_BAD_ARG;
-  }
-
-  if (len == 0U) {
-    return BOARD_OK;
-  }
-
-  result = board_spi_select(target);
-  if (result == BOARD_OK) {
-    result = hal_to_board_status(HAL_SPI_TransmitReceive(dev->hspi, (uint8_t *)tx, rx, xfer_len, dev->timeout_ms));
-  }
-  board_spi_deselect(target);
-  return result;
-}
-
-board_status_t board_i2c_mem_write_7bit(
+static board_status_t board_i2c_mem_write_7bit(
     const board_i2c_device_t *dev,
     uint16_t mem_addr,
     uint16_t mem_addr_size,
@@ -449,7 +459,7 @@ board_status_t board_i2c_mem_write_7bit(
       dev->timeout_ms));
 }
 
-board_status_t board_i2c_mem_read_7bit(
+static board_status_t board_i2c_mem_read_7bit(
     const board_i2c_device_t *dev,
     uint16_t mem_addr,
     uint16_t mem_addr_size,
@@ -474,6 +484,40 @@ board_status_t board_i2c_mem_read_7bit(
       data,
       data_len,
       dev->timeout_ms));
+}
+
+board_status_t board_clock_i2c_write(
+    uint8_t register_address,
+    const uint8_t *data,
+    size_t len)
+{
+  if (s_description.clock_device != BOARD_CLOCK_DEVICE_SIT5156) {
+    return BOARD_ERROR;
+  }
+
+  return board_i2c_mem_write_7bit(
+      &s_board.clock.i2c,
+      register_address,
+      I2C_MEMADD_SIZE_8BIT,
+      data,
+      len);
+}
+
+board_status_t board_clock_i2c_read(
+    uint8_t register_address,
+    uint8_t *data,
+    size_t len)
+{
+  if (s_description.clock_device != BOARD_CLOCK_DEVICE_SIT5156) {
+    return BOARD_ERROR;
+  }
+
+  return board_i2c_mem_read_7bit(
+      &s_board.clock.i2c,
+      register_address,
+      I2C_MEMADD_SIZE_8BIT,
+      data,
+      len);
 }
 
 board_status_t board_pc_transmit(const uint8_t *data, size_t len)
@@ -519,6 +563,40 @@ board_status_t board_pc_transmit(const uint8_t *data, size_t len)
   return (start_status == BOARD_BUSY) ? BOARD_OK : start_status;
 }
 
+board_status_t board_pc_transmit_blocking(
+    const uint8_t *data,
+    size_t len)
+{
+  uint16_t data_len = checked_len(len);
+
+  if (((data == NULL) && (len != 0U)) ||
+      ((data_len == 0U) && (len != 0U))) {
+    return BOARD_BAD_ARG;
+  }
+  if (len == 0U) {
+    return BOARD_OK;
+  }
+  if (board_pc_tx_busy()) {
+    return BOARD_BUSY;
+  }
+
+  return hal_to_board_status(HAL_UART_Transmit(
+      s_board.pc_uart.huart,
+      data,
+      data_len,
+      s_board.pc_uart.timeout_ms));
+}
+
+void board_pc_tx_abort(void)
+{
+  (void)HAL_UART_AbortTransmit(s_board.pc_uart.huart);
+  s_pc_tx_head = 0U;
+  s_pc_tx_tail = 0U;
+  s_pc_tx_in_flight = 0U;
+  s_pc_tx_started_ms = 0U;
+  s_pc_tx_dma_active = false;
+}
+
 void board_pc_tx_process(void)
 {
   if (s_pc_tx_dma_active &&
@@ -539,7 +617,7 @@ size_t board_pc_tx_available(void)
   return (size_t)(BOARD_PC_TX_BUFFER_SIZE - used - 1U);
 }
 
-bool board_pc_tx_busy(void)
+static bool board_pc_tx_busy(void)
 {
   return s_pc_tx_dma_active || (s_pc_tx_head != s_pc_tx_tail);
 }
@@ -547,25 +625,6 @@ bool board_pc_tx_busy(void)
 uint32_t board_pc_tx_error_count(void)
 {
   return s_pc_tx_errors;
-}
-
-board_status_t board_pc_receive(uint8_t *data, size_t len)
-{
-  uint16_t data_len = checked_len(len);
-
-  if ((data == NULL && len != 0U) || (data_len == 0U && len != 0U)) {
-    return BOARD_BAD_ARG;
-  }
-
-  if (len == 0U) {
-    return BOARD_OK;
-  }
-
-  return hal_to_board_status(HAL_UART_Receive(
-      s_board.pc_uart.huart,
-      data,
-      data_len,
-      s_board.pc_uart.timeout_ms));
 }
 
 board_status_t board_crc32_calculate(
@@ -584,11 +643,11 @@ board_status_t board_crc32_calculate(
   return BOARD_OK;
 }
 
-board_status_t board_external_clock_counter_start(void)
+static board_status_t board_external_clock_counter_start(void)
 {
   board_status_t status;
 
-  if (!s_capabilities.has_external_clock_counter) {
+  if (!s_description.external_clock_counter_connected) {
     return BOARD_ERROR;
   }
 
@@ -596,66 +655,43 @@ board_status_t board_external_clock_counter_start(void)
   __HAL_TIM_CLEAR_FLAG(s_board.external_clock_timer.htim, TIM_FLAG_UPDATE);
   status = hal_to_board_status(
       HAL_TIM_Base_Start(s_board.external_clock_timer.htim));
-  s_external_clock_counter_started = status == BOARD_OK;
-  return status;
-}
-
-board_status_t board_external_clock_counter_stop(void)
-{
-  board_status_t status;
-
-  if (!s_capabilities.has_external_clock_counter) {
-    return BOARD_ERROR;
-  }
-
-  status = hal_to_board_status(
-      HAL_TIM_Base_Stop(s_board.external_clock_timer.htim));
-  if (status == BOARD_OK) {
-    s_external_clock_counter_started = false;
-  }
+  s_external_clock_counter_running = status == BOARD_OK;
   return status;
 }
 
 uint32_t board_external_clock_counter_get(void)
 {
-  return s_capabilities.has_external_clock_counter
+  return s_external_clock_counter_running
              ? __HAL_TIM_GET_COUNTER(s_board.external_clock_timer.htim)
              : 0U;
-}
-
-void board_external_clock_counter_reset(void)
-{
-  if (!s_capabilities.has_external_clock_counter) {
-    return;
-  }
-
-  __HAL_TIM_SET_COUNTER(s_board.external_clock_timer.htim, 0U);
-  __HAL_TIM_CLEAR_FLAG(s_board.external_clock_timer.htim, TIM_FLAG_UPDATE);
 }
 
 void board_clkdp_set_mode(board_clkdp_mode_t mode)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
 
-  if (!s_capabilities.has_clock_control) {
+  if (s_description.clock_device != BOARD_CLOCK_DEVICE_SIT3907) {
     return;
   }
 
-  GPIO_InitStruct.Pin = s_board.clock.clkdp_xo.dp.pin;
+  GPIO_InitStruct.Pin = s_board.clock.clkdp.pin;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
 
   switch (mode) {
     case BOARD_CLKDP_DRIVE_LOW:
-      HAL_GPIO_WritePin(s_board.clock.clkdp_xo.dp.port, s_board.clock.clkdp_xo.dp.pin, GPIO_PIN_RESET);
+      HAL_GPIO_WritePin(
+          s_board.clock.clkdp.port,
+          s_board.clock.clkdp.pin,
+          GPIO_PIN_RESET);
       GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
       break;
     case BOARD_CLKDP_DRIVE_HIGH:
-      HAL_GPIO_WritePin(s_board.clock.clkdp_xo.dp.port, s_board.clock.clkdp_xo.dp.pin, GPIO_PIN_SET);
+      HAL_GPIO_WritePin(
+          s_board.clock.clkdp.port,
+          s_board.clock.clkdp.pin,
+          GPIO_PIN_SET);
       GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-      break;
-    case BOARD_CLKDP_INPUT:
-      GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
       break;
     case BOARD_CLKDP_TRISTATE:
     default:
@@ -663,7 +699,7 @@ void board_clkdp_set_mode(board_clkdp_mode_t mode)
       break;
   }
 
-  HAL_GPIO_Init(s_board.clock.clkdp_xo.dp.port, &GPIO_InitStruct);
+  HAL_GPIO_Init(s_board.clock.clkdp.port, &GPIO_InitStruct);
 }
 
 static board_status_t board_spi_set_prescaler(
@@ -885,13 +921,17 @@ static bool board_fpga_get_cdone(void)
  * configuration rate is forced here: MSIK 48 MHz / 4 = 12 MHz, inside the 1 MHz
  * to 25 MHz window iCE40 slave configuration requires. board_spi_set_prescaler()
  * returns early when the prescaler already matches, so the repeated selects
- * inside ice40_configure() do not re-initialise SPI1 in the middle of the
+ * inside ice40up5k_configure() do not re-initialise SPI1 in the middle of the
  * sequence.
  */
-static void board_fpga_spi_select(void)
+static bool board_fpga_spi_select(void)
 {
-  (void)board_spi_set_prescaler(BOARD_SPI_TARGET_FPGA, SPI_BAUDRATEPRESCALER_4);
-  (void)board_spi_select(BOARD_SPI_TARGET_FPGA);
+  if (board_spi_set_prescaler(
+          BOARD_SPI_TARGET_FPGA,
+          SPI_BAUDRATEPRESCALER_4) != BOARD_OK) {
+    return false;
+  }
+  return board_spi_select(BOARD_SPI_TARGET_FPGA) == BOARD_OK;
 }
 
 static void board_fpga_spi_deselect(void)
@@ -902,28 +942,42 @@ static void board_fpga_spi_deselect(void)
 /*
  * Deliberately leaves the chip select alone: the whole configuration image has
  * to be clocked out inside a single SPI_SS low window, and the dummy clocks
- * around it have to be clocked out with SPI_SS high. Using
- * board_spi_transmit() here would toggle SPI_SS once per chunk and break
- * configuration.
+ * around it have to be clocked out with SPI_SS high. This callback therefore
+ * writes through HAL without changing chip select between chunks.
  */
-static int32_t board_fpga_spi_write(const uint8_t *data, uint16_t len)
+static bool board_fpga_spi_write(const uint8_t *data, size_t len)
 {
   const board_spi_device_t *dev = &s_board.fpga.spi;
+  size_t offset = 0U;
 
   if ((data == NULL) || (len == 0U)) {
-    return (int32_t)BOARD_BAD_ARG;
+    return false;
   }
 
-  return (int32_t)hal_to_board_status(
-      HAL_SPI_Transmit(dev->hspi, data, len, dev->timeout_ms));
+  while (offset < len) {
+    size_t remaining = len - offset;
+    uint16_t chunk = (remaining > BOARD_FPGA_SPI_CHUNK_BYTES)
+        ? (uint16_t)BOARD_FPGA_SPI_CHUNK_BYTES
+        : (uint16_t)remaining;
+
+    if (HAL_SPI_Transmit(
+            dev->hspi,
+            &data[offset],
+            chunk,
+            dev->timeout_ms) != HAL_OK) {
+      return false;
+    }
+    offset += chunk;
+  }
+  return true;
 }
 
-static void board_delay_ms(uint32_t delay_ms)
+void board_delay_ms(uint32_t delay_ms)
 {
   HAL_Delay(delay_ms);
 }
 
-static void board_delay_us(uint32_t delay_us)
+void board_delay_us(uint32_t delay_us)
 {
   uint32_t ticks_per_ms;
   uint32_t ticks_remaining;
@@ -958,17 +1012,12 @@ static void board_delay_us(uint32_t delay_us)
   }
 }
 
-static uint32_t board_time_ms(void)
+bool board_get_reference_time_ms(uint32_t *timestamp_ms)
 {
-  return board_get_time_ms();
-}
-
-static int32_t board_reference_time_ms(uint32_t *timestamp_ms)
-{
-  if ((timestamp_ms == NULL) || !s_external_clock_counter_started) {
-    return (int32_t)BOARD_ERROR;
+  if ((timestamp_ms == NULL) || !s_external_clock_counter_running) {
+    return false;
   }
 
   *timestamp_ms = board_external_clock_counter_get();
-  return (int32_t)BOARD_OK;
+  return true;
 }

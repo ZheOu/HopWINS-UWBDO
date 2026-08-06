@@ -12,6 +12,11 @@
 extern "C" {
 #endif
 
+#include "capture_output.h"
+#include "do_loop_strategy.h"
+#include "dw3000.h"
+#include "uwb_timestamp_estimator.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -22,9 +27,17 @@ typedef enum {
 
 typedef struct {
   app_workflow_t workflow;
-  bool run_boot_uwb_clock_diagnostic;
+  dw3000_rf_mode_t uwb_rf_mode;
+  dw3000_pdoa_mode_t uwb_pdoa_mode;
   uint16_t cir_sample_count;
   uint16_t cir_pre_first_path_samples;
+  bool do_clock_tracking;
+  do_loop_strategy_id_t do_loop_strategy;
+  uint32_t do_loop_window_intervals;
+  uwb_timestamp_estimator_id_t timestamp_estimator;
+  serial_capture_format_t follower_capture_format;
+  bool follower_rf_ab_test;
+  uint32_t follower_rf_ab_interval_ms;
 } app_config_t;
 
 #ifdef __cplusplus
