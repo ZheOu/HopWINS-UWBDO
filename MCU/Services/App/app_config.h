@@ -23,6 +23,8 @@ extern "C" {
 typedef enum {
   APP_WORKFLOW_DO_LEADER = 0,
   APP_WORKFLOW_DO_FOLLOWER,
+  APP_WORKFLOW_UWB_STS_TX_DIAGNOSTIC,
+  APP_WORKFLOW_UWB_STS_DUAL_RX_DIAGNOSTIC,
 } app_workflow_t;
 
 typedef struct {

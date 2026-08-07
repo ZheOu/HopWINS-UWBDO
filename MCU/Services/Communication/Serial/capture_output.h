@@ -19,6 +19,7 @@ typedef enum {
   SERIAL_CAPTURE_FORMAT_OFF = 0,
   SERIAL_CAPTURE_FORMAT_TEXT_V1,
   SERIAL_CAPTURE_FORMAT_HCIR_V2,
+  SERIAL_CAPTURE_FORMAT_HCIR_V3,
 } serial_capture_format_t;
 
 void capture_output_init(void);

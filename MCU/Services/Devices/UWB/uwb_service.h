@@ -43,9 +43,15 @@ typedef enum {
   UWB_SERVICE_MODE_CONTINUOUS_RX,
 } uwb_service_mode_t;
 
+typedef enum {
+  UWB_SERVICE_CIR_CAPTURE_IPATOV = 0,
+  UWB_SERVICE_CIR_CAPTURE_STS_DUAL,
+} uwb_service_cir_capture_mode_t;
+
 typedef struct {
   uint16_t sample_count;
   uint16_t pre_first_path_samples;
+  uwb_service_cir_capture_mode_t mode;
   bool capture_cir;
 } uwb_service_cir_config_t;
 
@@ -72,8 +78,12 @@ typedef struct {
   uint16_t cir_sample_count;
   uint8_t cir_sample_bytes;
   dw3000_status_t cir_status;
+  dw3000_cir_source_t cir_source;
+  uint8_t cir_group_size;
   dw3000_rf_port_t rf_port;
   uint16_t rx_antenna_delay;
+  dw3000_pdoa_diagnostic_t pdoa_diagnostic;
+  dw3000_status_t pdoa_diagnostic_status;
 } uwb_service_cir_capture_t;
 
 typedef struct {

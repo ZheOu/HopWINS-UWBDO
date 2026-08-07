@@ -27,6 +27,23 @@ The same block owns the DO tracking experiment and CIR capture settings. A CIR
 sample count of zero exports the complete accumulator when CIR export is
 enabled.
 
+The STS/PDoA bench diagnostic is selected with one of these pairs:
+
+```c
+/* Single-RF TX board. */
+#define HOPWINS_BOARD_VARIANT  BOARD_VARIANT_UWB_RF1_SIT5156
+#define HOPWINS_APP_WORKFLOW   APP_WORKFLOW_UWB_STS_TX_DIAGNOSTIC
+
+/* Dual-RF RX board; this is the current checked-in selection. */
+#define HOPWINS_BOARD_VARIANT  BOARD_VARIANT_FULL_SIT5156
+#define HOPWINS_APP_WORKFLOW   APP_WORKFLOW_UWB_STS_DUAL_RX_DIAGNOSTIC
+```
+
+Both workflows use STS Mode 1, SDC, and 256 STS symbols. TX uses RF1. RX uses
+PDoA Mode 3 with RF1-to-RF2 automatic switching and exports both 512-sample STS
+accumulators as HCIR v3. The diagnostic deliberately skips FPGA configuration
+and does not run the DO clock-control loop.
+
 ## Build
 
 The project uses the STM32Cube ST Arm Clang bundle and Ninja. CMake has only two

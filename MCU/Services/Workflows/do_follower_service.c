@@ -353,6 +353,7 @@ static dw3000_status_t start_cir_receive(void)
   const uwb_service_cir_config_t cir_config = {
     .sample_count = s_config.cir_sample_count,
     .pre_first_path_samples = s_config.cir_pre_first_path_samples,
+    .mode = UWB_SERVICE_CIR_CAPTURE_IPATOV,
     .capture_cir =
         capture_output_requires_cir(s_config.follower_capture_format) ||
         uwb_timestamp_estimator_requires_cir(

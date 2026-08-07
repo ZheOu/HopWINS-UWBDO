@@ -11,6 +11,7 @@
 #include "do_clock_tracking_service.h"
 #include "do_follower_service.h"
 #include "do_leader_service.h"
+#include "uwb_sts_diagnostic_service.h"
 #include "uwb_profile.h"
 
 static app_workflow_t s_workflow;
@@ -44,6 +45,25 @@ static bool configure_uwb_profile(
   if ((config == NULL) || (board == NULL)) {
     return false;
   }
+  s_uwb_profile = g_uwb_default_profile;
+  if ((config->workflow == APP_WORKFLOW_UWB_STS_TX_DIAGNOSTIC) ||
+      (config->workflow == APP_WORKFLOW_UWB_STS_DUAL_RX_DIAGNOSTIC)) {
+    s_uwb_profile.radio.sts_mode = DW3000_STS_MODE_1;
+    s_uwb_profile.radio.sts_length = 256U;
+    s_uwb_profile.radio.sts_sdc = true;
+
+    if (config->workflow == APP_WORKFLOW_UWB_STS_TX_DIAGNOSTIC) {
+      s_uwb_profile.radio.rf_mode = DW3000_RF_MODE_MANUAL_1;
+      s_uwb_profile.radio.pdoa_mode = DW3000_PDOA_MODE_DISABLED;
+      required_paths = BOARD_RF_PATH_1;
+    } else {
+      s_uwb_profile.radio.rf_mode = DW3000_RF_MODE_AUTO_1_2;
+      s_uwb_profile.radio.pdoa_mode = DW3000_PDOA_MODE_3;
+      required_paths = BOARD_RF_PATH_BOTH;
+    }
+    return (board->available_rf_paths & required_paths) == required_paths;
+  }
+
   if (!do_loop_strategy_is_supported(config->do_loop_strategy) ||
       (config->do_loop_window_intervals == 0U) ||
       (config->do_loop_window_intervals >
@@ -54,6 +74,7 @@ static bool configure_uwb_profile(
           config->follower_capture_format)) {
     return false;
   }
+
   automatic_rf_mode =
       (config->uwb_rf_mode == DW3000_RF_MODE_AUTO_1_2) ||
       (config->uwb_rf_mode == DW3000_RF_MODE_AUTO_2_1);
@@ -73,7 +94,6 @@ static bool configure_uwb_profile(
       ((board->available_rf_paths & required_paths) != required_paths)) {
     return false;
   }
-  s_uwb_profile = g_uwb_default_profile;
   s_uwb_profile.radio.rf_mode = config->uwb_rf_mode;
   s_uwb_profile.radio.pdoa_mode = config->uwb_pdoa_mode;
   return true;
@@ -86,6 +106,10 @@ const char *workflow_dispatcher_name(app_workflow_t workflow)
       return "DO-Leader";
     case APP_WORKFLOW_DO_FOLLOWER:
       return "DO-Follower";
+    case APP_WORKFLOW_UWB_STS_TX_DIAGNOSTIC:
+      return "UWB-STS-TX-Diagnostic";
+    case APP_WORKFLOW_UWB_STS_DUAL_RX_DIAGNOSTIC:
+      return "UWB-STS-Dual-RX-Diagnostic";
     default:
       return "Invalid";
   }
@@ -119,6 +143,20 @@ bool workflow_dispatcher_init(const app_config_t *config)
       do_follower_service_init(config, &s_uwb_profile);
       break;
 
+    case APP_WORKFLOW_UWB_STS_TX_DIAGNOSTIC:
+      uwb_sts_diagnostic_service_init(
+          UWB_STS_DIAGNOSTIC_TX,
+          config,
+          &s_uwb_profile);
+      break;
+
+    case APP_WORKFLOW_UWB_STS_DUAL_RX_DIAGNOSTIC:
+      uwb_sts_diagnostic_service_init(
+          UWB_STS_DIAGNOSTIC_DUAL_RX,
+          config,
+          &s_uwb_profile);
+      break;
+
     default:
       return false;
   }
@@ -139,6 +177,10 @@ void workflow_dispatcher_process(void)
       break;
     case APP_WORKFLOW_DO_FOLLOWER:
       do_follower_service_process();
+      break;
+    case APP_WORKFLOW_UWB_STS_TX_DIAGNOSTIC:
+    case APP_WORKFLOW_UWB_STS_DUAL_RX_DIAGNOSTIC:
+      uwb_sts_diagnostic_service_process();
       break;
     default:
       s_initialized = false;

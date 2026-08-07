@@ -8,7 +8,7 @@
 #include "capture_output.h"
 
 #include "console_protocol.h"
-#include "hcir_v2_protocol.h"
+#include "hcir_protocol.h"
 
 #include <stddef.h>
 
@@ -19,7 +19,7 @@ static uint16_t s_cir_chunk_index;
 static uint16_t s_cir_chunk_count;
 static bool s_cir_frame_queued;
 
-static void process_hcir_v2(void);
+static void process_hcir(hcir_protocol_version_t version);
 static void process_text_v1(void);
 
 void capture_output_init(void)
@@ -43,7 +43,10 @@ void capture_output_process(void)
       process_text_v1();
       break;
     case SERIAL_CAPTURE_FORMAT_HCIR_V2:
-      process_hcir_v2();
+      process_hcir(HCIR_PROTOCOL_VERSION_2);
+      break;
+    case SERIAL_CAPTURE_FORMAT_HCIR_V3:
+      process_hcir(HCIR_PROTOCOL_VERSION_3);
       break;
     default:
       s_capture = NULL;
@@ -67,7 +70,8 @@ board_status_t capture_output_start(
     return BOARD_BUSY;
   }
 
-  if (format == SERIAL_CAPTURE_FORMAT_HCIR_V2) {
+  if ((format == SERIAL_CAPTURE_FORMAT_HCIR_V2) ||
+      (format == SERIAL_CAPTURE_FORMAT_HCIR_V3)) {
     if (capture->cir_status == DW3000_STATUS_OK) {
       if ((capture->cir_data == NULL) ||
           (capture->cir_sample_count == 0U) ||
@@ -76,8 +80,8 @@ board_status_t capture_output_start(
       }
       chunk_count =
           ((uint32_t)capture->cir_sample_count +
-           HCIR_V2_SAMPLES_PER_CHUNK - 1U) /
-          HCIR_V2_SAMPLES_PER_CHUNK;
+           HCIR_SAMPLES_PER_CHUNK - 1U) /
+          HCIR_SAMPLES_PER_CHUNK;
       if ((chunk_count == 0U) || (chunk_count > UINT16_MAX)) {
         return BOARD_BAD_ARG;
       }
@@ -102,7 +106,8 @@ bool capture_output_busy(void)
 
 bool capture_output_requires_cir(serial_capture_format_t format)
 {
-  return format == SERIAL_CAPTURE_FORMAT_HCIR_V2;
+  return (format == SERIAL_CAPTURE_FORMAT_HCIR_V2) ||
+         (format == SERIAL_CAPTURE_FORMAT_HCIR_V3);
 }
 
 const char *capture_output_format_name(serial_capture_format_t format)
@@ -114,6 +119,8 @@ const char *capture_output_format_name(serial_capture_format_t format)
       return "TEXT_V1";
     case SERIAL_CAPTURE_FORMAT_HCIR_V2:
       return "HCIR_V2";
+    case SERIAL_CAPTURE_FORMAT_HCIR_V3:
+      return "HCIR_V3";
     default:
       return "INVALID";
   }
@@ -123,10 +130,11 @@ bool capture_output_format_is_supported(serial_capture_format_t format)
 {
   return (format == SERIAL_CAPTURE_FORMAT_OFF) ||
       (format == SERIAL_CAPTURE_FORMAT_TEXT_V1) ||
-      (format == SERIAL_CAPTURE_FORMAT_HCIR_V2);
+      (format == SERIAL_CAPTURE_FORMAT_HCIR_V2) ||
+      (format == SERIAL_CAPTURE_FORMAT_HCIR_V3);
 }
 
-static void process_hcir_v2(void)
+static void process_hcir(hcir_protocol_version_t version)
 {
   board_status_t status;
   uint32_t relative_offset;
@@ -134,7 +142,7 @@ static void process_hcir_v2(void)
   uint16_t sample_count;
 
   if (!s_cir_frame_queued) {
-    status = hcir_v2_protocol_send_frame(s_capture);
+    status = hcir_protocol_send_frame(s_capture, version);
     if (status == BOARD_BUSY) {
       return;
     }
@@ -151,13 +159,14 @@ static void process_hcir_v2(void)
   }
 
   relative_offset =
-      (uint32_t)s_cir_chunk_index * HCIR_V2_SAMPLES_PER_CHUNK;
+      (uint32_t)s_cir_chunk_index * HCIR_SAMPLES_PER_CHUNK;
   remaining = s_capture->cir_sample_count - (uint16_t)relative_offset;
-  sample_count = (remaining > HCIR_V2_SAMPLES_PER_CHUNK)
-      ? HCIR_V2_SAMPLES_PER_CHUNK
+  sample_count = (remaining > HCIR_SAMPLES_PER_CHUNK)
+      ? HCIR_SAMPLES_PER_CHUNK
       : remaining;
-  status = hcir_v2_protocol_send_samples(
+  status = hcir_protocol_send_samples(
       s_capture,
+      version,
       s_cir_chunk_index,
       s_cir_chunk_count,
       (uint16_t)relative_offset,

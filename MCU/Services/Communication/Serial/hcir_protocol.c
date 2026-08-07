@@ -1,20 +1,20 @@
 /**
   ******************************************************************************
-  * @file           : hcir_v2_protocol.c
-  * @brief          : HCIR v2 binary UART framing
+  * @file           : hcir_protocol.c
+  * @brief          : Versioned HCIR binary UART framing
   ******************************************************************************
   */
 
-#include "hcir_v2_protocol.h"
+#include "hcir_protocol.h"
 
 #include <string.h>
 
-#define CIR_PROTOCOL_VERSION             2U
-#define CIR_PROTOCOL_HEADER_LEN          128U
+#define CIR_PROTOCOL_V2_HEADER_LEN       128U
+#define CIR_PROTOCOL_V3_HEADER_LEN       176U
 #define CIR_PROTOCOL_CRC_LEN             4U
 #define CIR_PROTOCOL_MAX_PAYLOAD_LEN     DW3000_RX_FRAME_MAX_LEN
 #define CIR_PROTOCOL_MAX_PACKET_LEN \
-  (CIR_PROTOCOL_HEADER_LEN + CIR_PROTOCOL_MAX_PAYLOAD_LEN + \
+  (CIR_PROTOCOL_V3_HEADER_LEN + CIR_PROTOCOL_MAX_PAYLOAD_LEN + \
    CIR_PROTOCOL_CRC_LEN)
 
 #define CIR_PROTOCOL_FLAG_RX_CRC_GOOD    UINT16_C(0x0001)
@@ -25,6 +25,7 @@
 #define CIR_PROTOCOL_FLAG_REGISTERS_OK   UINT16_C(0x0020)
 #define CIR_PROTOCOL_FLAG_REFERENCE_TIME UINT16_C(0x0040)
 #define CIR_PROTOCOL_FLAG_RAW_TIMESTAMP  UINT16_C(0x0080)
+#define CIR_PROTOCOL_FLAG_PDOA_DIAG      UINT16_C(0x0100)
 
 #define CIR_PROTOCOL_FORMAT_I24_Q24_LE   1U
 #define CIR_PROTOCOL_REFERENCE_TIM2_MS   1U
@@ -35,9 +36,11 @@ static void write_u16_le(uint8_t *destination, uint16_t value);
 static void write_u32_le(uint8_t *destination, uint32_t value);
 static void write_u40_le(uint8_t *destination, uint64_t value);
 static void write_u64_le(uint8_t *destination, uint64_t value);
+static uint16_t header_length_for_version(hcir_protocol_version_t version);
 static board_status_t send_packet(
     const uwb_service_cir_capture_t *capture,
-    hcir_v2_packet_type_t packet_type,
+    hcir_protocol_version_t version,
+    hcir_packet_type_t packet_type,
     uint16_t chunk_index,
     uint16_t chunk_count,
     uint16_t payload_sample_offset,
@@ -45,8 +48,9 @@ static board_status_t send_packet(
     const uint8_t *payload,
     uint16_t payload_len);
 
-board_status_t hcir_v2_protocol_send_frame(
-    const uwb_service_cir_capture_t *capture)
+board_status_t hcir_protocol_send_frame(
+    const uwb_service_cir_capture_t *capture,
+    hcir_protocol_version_t version)
 {
   if (capture == NULL) {
     return BOARD_BAD_ARG;
@@ -54,7 +58,8 @@ board_status_t hcir_v2_protocol_send_frame(
 
   return send_packet(
       capture,
-      HCIR_V2_PACKET_RX_FRAME,
+      version,
+      HCIR_PACKET_RX_FRAME,
       0U,
       1U,
       capture->cir_sample_offset,
@@ -63,8 +68,9 @@ board_status_t hcir_v2_protocol_send_frame(
       capture->frame_len);
 }
 
-board_status_t hcir_v2_protocol_send_samples(
+board_status_t hcir_protocol_send_samples(
     const uwb_service_cir_capture_t *capture,
+    hcir_protocol_version_t version,
     uint16_t chunk_index,
     uint16_t chunk_count,
     uint16_t relative_sample_offset,
@@ -90,7 +96,8 @@ board_status_t hcir_v2_protocol_send_samples(
 
   return send_packet(
       capture,
-      HCIR_V2_PACKET_CIR_DATA,
+      version,
+      HCIR_PACKET_CIR_DATA,
       chunk_index,
       chunk_count,
       (uint16_t)(capture->cir_sample_offset + relative_sample_offset),
@@ -101,7 +108,8 @@ board_status_t hcir_v2_protocol_send_samples(
 
 static board_status_t send_packet(
     const uwb_service_cir_capture_t *capture,
-    hcir_v2_packet_type_t packet_type,
+    hcir_protocol_version_t version,
+    hcir_packet_type_t packet_type,
     uint16_t chunk_index,
     uint16_t chunk_count,
     uint16_t payload_sample_offset,
@@ -110,12 +118,14 @@ static board_status_t send_packet(
     uint16_t payload_len)
 {
   uint16_t flags = CIR_PROTOCOL_FLAG_RX_CRC_GOOD;
+  uint16_t header_len = header_length_for_version(version);
   uint32_t packet_len =
-      CIR_PROTOCOL_HEADER_LEN + payload_len + CIR_PROTOCOL_CRC_LEN;
+      header_len + payload_len + CIR_PROTOCOL_CRC_LEN;
   uint32_t crc;
   board_status_t status;
 
-  if ((capture == NULL) || ((payload == NULL) && (payload_len != 0U)) ||
+  if ((capture == NULL) || (header_len == 0U) ||
+      ((payload == NULL) && (payload_len != 0U)) ||
       (packet_len > sizeof(s_packet)) || (chunk_count == 0U) ||
       (chunk_index >= chunk_count)) {
     return BOARD_BAD_ARG;
@@ -140,12 +150,16 @@ static board_status_t send_packet(
     flags |= CIR_PROTOCOL_FLAG_REFERENCE_TIME;
   }
   flags |= CIR_PROTOCOL_FLAG_RAW_TIMESTAMP;
+  if ((version >= HCIR_PROTOCOL_VERSION_3) &&
+      (capture->pdoa_diagnostic_status == DW3000_STATUS_OK)) {
+    flags |= CIR_PROTOCOL_FLAG_PDOA_DIAG;
+  }
 
-  memset(s_packet, 0, CIR_PROTOCOL_HEADER_LEN);
+  memset(s_packet, 0, header_len);
   memcpy(&s_packet[0], "HCIR", 4U);
-  s_packet[4] = CIR_PROTOCOL_VERSION;
+  s_packet[4] = (uint8_t)version;
   s_packet[5] = (uint8_t)packet_type;
-  write_u16_le(&s_packet[6], CIR_PROTOCOL_HEADER_LEN);
+  write_u16_le(&s_packet[6], header_len);
   write_u16_le(&s_packet[8], payload_len);
   write_u16_le(&s_packet[10], flags);
   write_u32_le(&s_packet[12], capture->capture_id);
@@ -213,19 +227,58 @@ static board_status_t send_packet(
   s_packet[122] = (uint8_t)(int8_t)capture->register_status;
   write_u40_le(&s_packet[123], capture->raw_receive_timestamp);
 
+  if (version >= HCIR_PROTOCOL_VERSION_3) {
+    s_packet[128] = (uint8_t)capture->cir_source;
+    s_packet[129] = capture->cir_group_size;
+    s_packet[130] = (uint8_t)capture->rf_port;
+    s_packet[131] =
+        (uint8_t)(int8_t)capture->pdoa_diagnostic_status;
+    write_u40_le(
+        &s_packet[132],
+        capture->pdoa_diagnostic.ipatov_timestamp);
+    write_u40_le(
+        &s_packet[137],
+        capture->pdoa_diagnostic.sts0_timestamp);
+    write_u40_le(
+        &s_packet[142],
+        capture->pdoa_diagnostic.sts1_timestamp);
+    s_packet[147] = capture->pdoa_diagnostic.ipatov_status;
+    write_u16_le(
+        &s_packet[148],
+        capture->pdoa_diagnostic.sts0_status);
+    write_u16_le(
+        &s_packet[150],
+        capture->pdoa_diagnostic.sts1_status);
+    write_u16_le(
+        &s_packet[152],
+        capture->pdoa_diagnostic.ipatov_phase);
+    write_u16_le(
+        &s_packet[154],
+        capture->pdoa_diagnostic.sts0_phase);
+    write_u16_le(
+        &s_packet[156],
+        capture->pdoa_diagnostic.sts1_phase);
+    write_u16_le(
+        &s_packet[158],
+        (uint16_t)capture->pdoa_diagnostic.pdoa);
+    write_u64_le(
+        &s_packet[160],
+        (uint64_t)capture->pdoa_diagnostic.tdoa);
+  }
+
   if (payload_len != 0U) {
-    memcpy(&s_packet[CIR_PROTOCOL_HEADER_LEN], payload, payload_len);
+    memcpy(&s_packet[header_len], payload, payload_len);
   }
 
   status = board_crc32_calculate(
       s_packet,
-      CIR_PROTOCOL_HEADER_LEN + payload_len,
+      header_len + payload_len,
       &crc);
   if (status != BOARD_OK) {
     return status;
   }
   write_u32_le(
-      &s_packet[CIR_PROTOCOL_HEADER_LEN + payload_len],
+      &s_packet[header_len + payload_len],
       crc);
   return board_pc_transmit(s_packet, packet_len);
 }
@@ -255,5 +308,17 @@ static void write_u64_le(uint8_t *destination, uint64_t value)
 {
   for (uint32_t i = 0U; i < sizeof(value); i++) {
     destination[i] = (uint8_t)(value >> (8U * i));
+  }
+}
+
+static uint16_t header_length_for_version(hcir_protocol_version_t version)
+{
+  switch (version) {
+    case HCIR_PROTOCOL_VERSION_2:
+      return CIR_PROTOCOL_V2_HEADER_LEN;
+    case HCIR_PROTOCOL_VERSION_3:
+      return CIR_PROTOCOL_V3_HEADER_LEN;
+    default:
+      return 0U;
   }
 }

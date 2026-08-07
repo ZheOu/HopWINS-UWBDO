@@ -77,6 +77,8 @@ Keep local changes to Qorvo-derived files small and documented:
 - Invalid internal SPI transfer modes use the configured assertion path rather
   than an unconditional infinite loop.
 - The RSSI preamble-code extraction explicitly parenthesizes mask-before-shift.
+- The full diagnostic reader takes both bytes of the second STS status from
+  `STS1_TOA_HI`; the imported source mixed its low byte with `STS_TOA_HI`.
 
 ## Bring-up flow
 
@@ -91,9 +93,10 @@ Keep local changes to Qorvo-derived files small and documented:
    configure TX RF and calibrated antenna delays.
 8. For TX, write a frame, program `DX_TIME`, issue delayed TX, poll `TXFRS`,
    and read the 40-bit transmitted timestamp.
-9. For RX/CIR, enable full CIA logging before RX, wait for `RXFCG`, read the
-   frame and 40-bit timestamp, snapshot important RX/CIA registers, then read
-   Ipatov diagnostics and accumulator samples before re-enabling RX.
+9. For RX/CIR, enable full CIA logging before RX, wait for both `RXFCG` and
+   `CIADONE`, read the frame and 40-bit timestamp, snapshot important RX/CIA
+   registers, then read the selected Ipatov/STS diagnostics and accumulator
+   samples before re-enabling RX.
 
 The board implementation owns STM32 HAL handles, pins, SPI rates, reset
 electrical behavior, and delay timing. The component driver does not include

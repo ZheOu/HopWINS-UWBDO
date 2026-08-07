@@ -23,6 +23,7 @@ const uwb_profile_t g_uwb_default_profile = {
     .sfd_timeout = 129U,
     .sts_mode = DW3000_STS_OFF,
     .sts_length = 64U,
+    .sts_sdc = false,
     .extended_phr = false,
     .tx_pulse_generator_delay = 0x34U,
     .tx_power = UINT32_C(0xFEFEFEFE),

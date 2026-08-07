@@ -35,6 +35,7 @@ extern "C" {
 #define DW3000_FRAME_FCS_LEN      2U
 #define DW3000_RX_FRAME_MAX_LEN   1023U
 #define DW3000_CIR_MAX_SAMPLES    1016U
+#define DW3000_STS_CIR_SAMPLES    512U
 #define DW3000_CIR_SAMPLE_BYTES   6U
 
 typedef enum {
@@ -106,6 +107,12 @@ typedef enum {
   DW3000_PDOA_MODE_3 = 3,
 } dw3000_pdoa_mode_t;
 
+typedef enum {
+  DW3000_CIR_SOURCE_IPATOV = 0,
+  DW3000_CIR_SOURCE_STS0,
+  DW3000_CIR_SOURCE_STS1,
+} dw3000_cir_source_t;
+
 typedef struct dw3000_platform {
   int32_t (*hardware_reset)(void);
   int32_t (*spi_set_slow_rate)(void);
@@ -156,6 +163,7 @@ typedef struct {
   uint16_t sfd_timeout;
   dw3000_sts_mode_t sts_mode;
   uint16_t sts_length;
+  bool sts_sdc;
   bool extended_phr;
   uint8_t tx_pulse_generator_delay;
   uint32_t tx_power;
@@ -207,6 +215,21 @@ typedef struct {
   int16_t first_path_power_q8_8;
 } dw3000_cir_diagnostic_t;
 
+/** CIA results shared by the Ipatov, STS0, and Mode-3 STS1 estimates. */
+typedef struct {
+  uint64_t ipatov_timestamp;
+  uint64_t sts0_timestamp;
+  uint64_t sts1_timestamp;
+  int64_t tdoa;
+  uint8_t ipatov_status;
+  uint16_t sts0_status;
+  uint16_t sts1_status;
+  uint16_t ipatov_phase;
+  uint16_t sts0_phase;
+  uint16_t sts1_phase;
+  int16_t pdoa;
+} dw3000_pdoa_diagnostic_t;
+
 /** Reset, probe, initialize OTP state, and verify communication at fast SPI. */
 dw3000_status_t dw3000_init(
     dw3000_device_t *device,
@@ -255,15 +278,21 @@ dw3000_status_t dw3000_read_rx_register_snapshot(
     const dw3000_device_t *device,
     dw3000_rx_register_snapshot_t *snapshot);
 uint16_t dw3000_get_cir_sample_count(
-    const dw3000_device_t *device);
+    const dw3000_device_t *device,
+    dw3000_cir_source_t source);
 dw3000_status_t dw3000_read_cir_diagnostics(
     const dw3000_device_t *device,
+    dw3000_cir_source_t source,
     dw3000_cir_diagnostic_t *diagnostic);
 dw3000_status_t dw3000_read_cir_48b(
     const dw3000_device_t *device,
+    dw3000_cir_source_t source,
     uint16_t sample_offset,
     uint16_t sample_count,
     uint8_t *samples);
+dw3000_status_t dw3000_read_pdoa_diagnostics(
+    const dw3000_device_t *device,
+    dw3000_pdoa_diagnostic_t *diagnostic);
 
 #ifdef __cplusplus
 }

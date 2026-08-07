@@ -16,9 +16,12 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 
     # Host communication and protocol encoders
     Communication/Serial/capture_output.c
-    Communication/Serial/hcir_v2_protocol.c
+    Communication/Serial/hcir_protocol.c
     Communication/Serial/console_protocol.c
     Communication/Serial/console_service.c
+
+    # Explicit hardware diagnostics
+    Diagnostics/UWB/uwb_sts_diagnostic_service.c
 
     # Runtime workflows
     Workflows/DO/do_clock_tracking_service.c
@@ -35,6 +38,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     Devices/FPGA
     Devices/UWB
     Communication/Serial
+    Diagnostics/UWB
     Workflows
     Workflows/DO
 )

@@ -279,6 +279,24 @@ void console_service_report_uwb_config(const uwb_service_state_t *state)
       &message,
       state->radio_config.tx_preamble_code,
       2U);
+  (void)console_protocol_append_text(&message, ", STS=");
+  if (state->radio_config.sts_mode == DW3000_STS_OFF) {
+    (void)console_protocol_append_text(&message, "OFF");
+  } else {
+    (void)console_protocol_append_text(
+        &message,
+        (state->radio_config.sts_mode == DW3000_STS_MODE_1)
+            ? "MODE1"
+            : "MODE2");
+    if (state->radio_config.sts_sdc) {
+      (void)console_protocol_append_text(&message, "-SDC");
+    }
+    (void)console_protocol_append_text(&message, ", STS_LEN=0x");
+    (void)console_protocol_append_hex(
+        &message,
+        state->radio_config.sts_length,
+        4U);
+  }
   if (state->mode == UWB_SERVICE_MODE_PERIODIC_TX) {
     (void)console_protocol_append_text(&message, ", MODE=TX, PERIOD_US=0x");
     (void)console_protocol_append_hex(

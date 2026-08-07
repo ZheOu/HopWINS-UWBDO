@@ -24,7 +24,7 @@
 #define UWB_RX_NO_FRAME_TIMEOUT_MS   UINT32_C(5000)
 #define UWB_RX_MAX_START_FAILURES    8U
 #define UWB_RX_MAX_WATCHDOG_RESTARTS 3U
-#define UWB_RX_CAPTURE_SLOT_COUNT    2U
+#define UWB_RX_CAPTURE_SLOT_COUNT    4U
 
 static const dw3000_platform_t *s_device_platform;
 static const uwb_service_time_source_t *s_time_source;
@@ -73,7 +73,11 @@ static void process_periodic_transmit(void);
 static void process_cir_receive(void);
 static dw3000_status_t restart_cir_receive(bool recovery);
 static void reset_capture_queue(void);
-static dw3000_rf_port_t rf_port_from_mode(dw3000_rf_mode_t mode);
+static uint8_t capture_source_count(void);
+static dw3000_cir_source_t capture_source_at(uint8_t index);
+static dw3000_rf_port_t rf_port_for_source(
+    dw3000_rf_mode_t mode,
+    dw3000_cir_source_t source);
 static uint16_t select_cir_sample_offset(
     uint16_t total_samples,
     uint16_t capture_samples,
@@ -188,6 +192,7 @@ dw3000_status_t uwb_service_start_cir_receive(
   uint16_t total_samples;
   uint32_t requested_samples;
   dw3000_status_t status;
+  dw3000_cir_source_t primary_source;
 
   if ((profile == NULL) || (config == NULL)) {
     return DW3000_STATUS_BAD_ARG;
@@ -198,6 +203,16 @@ dw3000_status_t uwb_service_start_cir_receive(
   }
   if (s_state.periodic_tx_enabled) {
     return DW3000_STATUS_BUSY;
+  }
+  if ((config->mode != UWB_SERVICE_CIR_CAPTURE_IPATOV) &&
+      (config->mode != UWB_SERVICE_CIR_CAPTURE_STS_DUAL)) {
+    return DW3000_STATUS_BAD_ARG;
+  }
+  if ((config->mode == UWB_SERVICE_CIR_CAPTURE_STS_DUAL) &&
+      (!config->capture_cir ||
+       (profile->radio.sts_mode == DW3000_STS_OFF) ||
+       (profile->radio.pdoa_mode != DW3000_PDOA_MODE_3))) {
+    return DW3000_STATUS_BAD_ARG;
   }
 
   s_profile = *profile;
@@ -213,7 +228,13 @@ dw3000_status_t uwb_service_start_cir_receive(
 
   total_samples = 0U;
   if (s_cir_config.capture_cir) {
-    total_samples = dw3000_get_cir_sample_count(&s_state.device);
+    primary_source =
+        (s_cir_config.mode == UWB_SERVICE_CIR_CAPTURE_STS_DUAL)
+            ? DW3000_CIR_SOURCE_STS0
+            : DW3000_CIR_SOURCE_IPATOV;
+    total_samples = dw3000_get_cir_sample_count(
+        &s_state.device,
+        primary_source);
     if (total_samples == 0U) {
       s_state.config_status = DW3000_STATUS_CIR_ERROR;
       return s_state.config_status;
@@ -366,24 +387,24 @@ static void process_periodic_transmit(void)
 
 static void process_cir_receive(void)
 {
+  uwb_service_capture_slot_t *receive_slot;
   uwb_service_capture_slot_t *slot;
   dw3000_rx_result_t result;
-  dw3000_cir_diagnostic_t diagnostic = {0};
+  dw3000_pdoa_diagnostic_t pdoa_diagnostic = {0};
   dw3000_rx_register_snapshot_t register_snapshot = {0};
   dw3000_status_t status;
-  dw3000_status_t diagnostic_status;
-  dw3000_status_t cir_status;
+  dw3000_status_t pdoa_diagnostic_status = DW3000_STATUS_NOT_READY;
   dw3000_status_t register_status;
   uint32_t current_time_ms;
   uint32_t reference_time_ms = 0U;
-  uint16_t sample_offset;
-  uint16_t sample_count;
+  uint32_t capture_id;
+  uint8_t source_count;
   bool reference_time_valid = false;
+  bool capture_read_error = false;
 
   current_time_ms = s_time_source->get_monotonic_time_ms();
   if (!s_state.receive_pending) {
-    if ((s_capture_count < UWB_RX_CAPTURE_SLOT_COUNT) &&
-        ((int32_t)(current_time_ms - s_next_receive_restart_time_ms) >= 0)) {
+    if ((int32_t)(current_time_ms - s_next_receive_restart_time_ms) >= 0) {
       (void)restart_cir_receive(true);
     }
     return;
@@ -411,12 +432,12 @@ static void process_cir_receive(void)
     return;
   }
   s_next_poll_time_ms = current_time_ms + UWB_RX_POLL_INTERVAL_MS;
-  slot = &s_capture_slots[s_capture_write_index];
+  receive_slot = &s_capture_slots[s_capture_write_index];
 
   status = dw3000_poll_receive(
       &s_state.device,
-      slot->frame,
-      (uint16_t)sizeof(slot->frame),
+      receive_slot->frame,
+      (uint16_t)sizeof(receive_slot->frame),
       &result);
   if (status != DW3000_STATUS_OK) {
     s_state.receive_pending = false;
@@ -440,80 +461,117 @@ static void process_cir_receive(void)
   }
 
   register_status = DW3000_STATUS_NOT_READY;
-  diagnostic_status = DW3000_STATUS_NOT_READY;
-  cir_status = DW3000_STATUS_NOT_READY;
-  sample_offset = 0U;
-  sample_count = 0U;
-
   if (s_state.cir_capture_enabled) {
     register_status = dw3000_read_rx_register_snapshot(
         &s_state.device,
         &register_snapshot);
-    diagnostic_status = dw3000_read_cir_diagnostics(
-        &s_state.device,
-        &diagnostic);
-    cir_status = diagnostic_status;
-    if (diagnostic_status == DW3000_STATUS_OK) {
-      sample_count = s_state.cir_capture_samples;
-      sample_offset = select_cir_sample_offset(
-          s_state.cir_total_samples,
-          sample_count,
-          diagnostic.first_path_index);
-      cir_status = dw3000_read_cir_48b(
+    if (s_cir_config.mode == UWB_SERVICE_CIR_CAPTURE_STS_DUAL) {
+      pdoa_diagnostic_status = dw3000_read_pdoa_diagnostics(
           &s_state.device,
-          sample_offset,
-          sample_count,
-          slot->cir_data);
-    }
-    if ((register_status != DW3000_STATUS_OK) ||
-        (diagnostic_status != DW3000_STATUS_OK) ||
-        (cir_status != DW3000_STATUS_OK)) {
-      s_state.receive_error_count++;
+          &pdoa_diagnostic);
     }
   }
 
-  slot->capture = (uwb_service_cir_capture_t){
-    .capture_id = s_next_capture_id++,
-    .frame = slot->frame,
-    .frame_len = result.frame_len,
-    .mcu_system_time_ms = current_time_ms,
-    .reference_time_ms = reference_time_ms,
-    .reference_time_valid = reference_time_valid,
-    .receive_timestamp = result.timestamp,
-    .raw_receive_timestamp = result.raw_timestamp,
-    .system_status = result.system_status,
-    .register_snapshot = register_snapshot,
-    .register_status = register_status,
-    .clock_offset = result.clock_offset,
-    .carrier_integrator = result.carrier_integrator,
-    .ranging_frame = result.ranging_frame,
-    .diagnostic = diagnostic,
-    .diagnostic_status = diagnostic_status,
-    .cir_data =
-        (cir_status == DW3000_STATUS_OK) ? slot->cir_data : NULL,
-    .cir_data_len =
-        (cir_status == DW3000_STATUS_OK)
-            ? (uint32_t)sample_count * DW3000_CIR_SAMPLE_BYTES
-            : 0U,
-    .cir_sample_offset = sample_offset,
-    .cir_sample_count =
-        (cir_status == DW3000_STATUS_OK) ? sample_count : 0U,
-    .cir_sample_bytes =
-        (cir_status == DW3000_STATUS_OK)
-            ? DW3000_CIR_SAMPLE_BYTES
-            : 0U,
-    .cir_status = cir_status,
-    .rf_port = rf_port_from_mode(s_state.radio_config.rf_mode),
-    .rx_antenna_delay = s_state.radio_config.rx_antenna_delay,
-  };
-  s_capture_write_index =
-      (uint8_t)((s_capture_write_index + 1U) % UWB_RX_CAPTURE_SLOT_COUNT);
-  s_capture_count++;
+  capture_id = s_next_capture_id++;
+  source_count = capture_source_count();
+  for (uint8_t source_index = 0U;
+       source_index < source_count;
+       source_index++) {
+    dw3000_cir_diagnostic_t diagnostic = {0};
+    dw3000_status_t diagnostic_status = DW3000_STATUS_NOT_READY;
+    dw3000_status_t cir_status = DW3000_STATUS_NOT_READY;
+    dw3000_cir_source_t cir_source = capture_source_at(source_index);
+    uint16_t sample_count = 0U;
+    uint16_t sample_offset = 0U;
+
+    slot = &s_capture_slots[s_capture_write_index];
+    if (slot != receive_slot) {
+      memcpy(slot->frame, receive_slot->frame, result.frame_len);
+    }
+
+    if (s_state.cir_capture_enabled) {
+      diagnostic_status = dw3000_read_cir_diagnostics(
+          &s_state.device,
+          cir_source,
+          &diagnostic);
+      cir_status = diagnostic_status;
+      if (diagnostic_status == DW3000_STATUS_OK) {
+        sample_count = s_state.cir_capture_samples;
+        sample_offset = select_cir_sample_offset(
+            s_state.cir_total_samples,
+            sample_count,
+            diagnostic.first_path_index);
+        cir_status = dw3000_read_cir_48b(
+            &s_state.device,
+            cir_source,
+            sample_offset,
+            sample_count,
+            slot->cir_data);
+      }
+      if ((diagnostic_status != DW3000_STATUS_OK) ||
+          (cir_status != DW3000_STATUS_OK)) {
+        capture_read_error = true;
+      }
+    }
+
+    slot->capture = (uwb_service_cir_capture_t){
+      .capture_id = capture_id,
+      .frame = slot->frame,
+      .frame_len = result.frame_len,
+      .mcu_system_time_ms = current_time_ms,
+      .reference_time_ms = reference_time_ms,
+      .reference_time_valid = reference_time_valid,
+      .receive_timestamp = result.timestamp,
+      .raw_receive_timestamp = result.raw_timestamp,
+      .system_status = result.system_status,
+      .register_snapshot = register_snapshot,
+      .register_status = register_status,
+      .clock_offset = result.clock_offset,
+      .carrier_integrator = result.carrier_integrator,
+      .ranging_frame = result.ranging_frame,
+      .diagnostic = diagnostic,
+      .diagnostic_status = diagnostic_status,
+      .cir_data =
+          (cir_status == DW3000_STATUS_OK) ? slot->cir_data : NULL,
+      .cir_data_len =
+          (cir_status == DW3000_STATUS_OK)
+              ? (uint32_t)sample_count * DW3000_CIR_SAMPLE_BYTES
+              : 0U,
+      .cir_sample_offset = sample_offset,
+      .cir_sample_count =
+          (cir_status == DW3000_STATUS_OK) ? sample_count : 0U,
+      .cir_sample_bytes =
+          (cir_status == DW3000_STATUS_OK)
+              ? DW3000_CIR_SAMPLE_BYTES
+              : 0U,
+      .cir_status = cir_status,
+      .cir_source = cir_source,
+      .cir_group_size = source_count,
+      .rf_port = rf_port_for_source(
+          s_state.radio_config.rf_mode,
+          cir_source),
+      .rx_antenna_delay = s_state.radio_config.rx_antenna_delay,
+      .pdoa_diagnostic = pdoa_diagnostic,
+      .pdoa_diagnostic_status = pdoa_diagnostic_status,
+    };
+    s_capture_write_index = (uint8_t)(
+        (s_capture_write_index + 1U) % UWB_RX_CAPTURE_SLOT_COUNT);
+    s_capture_count++;
+  }
+
+  if (s_state.cir_capture_enabled &&
+      ((register_status != DW3000_STATUS_OK) ||
+       ((s_cir_config.mode == UWB_SERVICE_CIR_CAPTURE_STS_DUAL) &&
+        (pdoa_diagnostic_status != DW3000_STATUS_OK)) ||
+       capture_read_error)) {
+    s_state.receive_error_count++;
+  }
   s_state.received_count++;
   s_state.queued_capture_count = s_capture_count;
   s_state.cir_capture_ready = s_capture_count != 0U;
 
-  if (s_capture_count < UWB_RX_CAPTURE_SLOT_COUNT) {
+  if ((UWB_RX_CAPTURE_SLOT_COUNT - s_capture_count) >=
+      capture_source_count()) {
     (void)restart_cir_receive(false);
   } else {
     s_state.capture_queue_full_count++;
@@ -526,7 +584,8 @@ static dw3000_status_t restart_cir_receive(bool recovery)
   dw3000_status_t status;
 
   if (!s_state.cir_receive_enabled ||
-      (s_capture_count >= UWB_RX_CAPTURE_SLOT_COUNT)) {
+      ((UWB_RX_CAPTURE_SLOT_COUNT - s_capture_count) <
+       capture_source_count())) {
     return DW3000_STATUS_BUSY;
   }
   if (recovery) {
@@ -561,13 +620,42 @@ static dw3000_status_t restart_cir_receive(bool recovery)
   return status;
 }
 
-static dw3000_rf_port_t rf_port_from_mode(dw3000_rf_mode_t mode)
+static uint8_t capture_source_count(void)
+{
+  return (s_cir_config.mode == UWB_SERVICE_CIR_CAPTURE_STS_DUAL)
+             ? 2U
+             : 1U;
+}
+
+static dw3000_cir_source_t capture_source_at(uint8_t index)
+{
+  if (s_cir_config.mode == UWB_SERVICE_CIR_CAPTURE_STS_DUAL) {
+    return (index == 0U)
+               ? DW3000_CIR_SOURCE_STS0
+               : DW3000_CIR_SOURCE_STS1;
+  }
+  return DW3000_CIR_SOURCE_IPATOV;
+}
+
+static dw3000_rf_port_t rf_port_for_source(
+    dw3000_rf_mode_t mode,
+    dw3000_cir_source_t source)
 {
   if (mode == DW3000_RF_MODE_MANUAL_1) {
     return DW3000_RF_PORT_1;
   }
   if (mode == DW3000_RF_MODE_MANUAL_2) {
     return DW3000_RF_PORT_2;
+  }
+  if (mode == DW3000_RF_MODE_AUTO_1_2) {
+    return (source == DW3000_CIR_SOURCE_STS1)
+               ? DW3000_RF_PORT_2
+               : DW3000_RF_PORT_1;
+  }
+  if (mode == DW3000_RF_MODE_AUTO_2_1) {
+    return (source == DW3000_CIR_SOURCE_STS1)
+               ? DW3000_RF_PORT_1
+               : DW3000_RF_PORT_2;
   }
   return DW3000_RF_PORT_NONE;
 }

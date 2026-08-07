@@ -1,4 +1,4 @@
-# HCIR v2 UART Protocol
+# HCIR UART Protocol
 
 USART1 carries startup/status text followed by self-synchronizing binary
 packets. Every binary packet starts with `HCIR`, uses little-endian integer
@@ -6,17 +6,19 @@ fields, and ends with a CRC over the complete header and payload.
 
 Protocol v2 sends one type-1 RX frame packet for every CRC-correct UWB frame,
 even when diagnostic or CIR reads fail. Type-2 packets carry CIR chunks when
-the CIR-valid flag is set. The host must use `header length`, rather than a
-hard-coded payload offset, so future protocol versions can extend the header.
+the CIR-valid flag is set. Protocol v3 extends the header for PDoA Mode 3 and
+emits one complete record for STS0 and another for STS1. Both records use the
+same capture ID and differ by CIR source. The host must use `header length`,
+rather than a hard-coded payload offset.
 
-## Packet layout
+## Common v2 header
 
 | Offset | Size | Field |
 |---:|---:|---|
 | 0 | 4 | ASCII magic `HCIR` |
-| 4 | 1 | Protocol version, currently 2 |
+| 4 | 1 | Protocol version: 2 or 3 |
 | 5 | 1 | Type: 1 RX frame, 2 CIR data |
-| 6 | 2 | Header length, currently 128 |
+| 6 | 2 | Header length: 128 for v2, 176 for v3 |
 | 8 | 2 | Payload length in bytes |
 | 10 | 2 | Flags, described below |
 | 12 | 4 | Capture ID |
@@ -38,7 +40,7 @@ hard-coded payload offset, so future protocol versions can extend the header.
 | 55 | 1 | CIR format: 1 means little-endian signed I24, Q24 |
 | 56 | 2 | Signed RSSI in Q8.8 dBm |
 | 58 | 2 | Signed first-path power in Q8.8 dBm |
-| 60 | 1 | Active manual DW3000 RF port; 0 when automatic dual-path mode is selected |
+| 60 | 1 | RF port associated with the exported CIR when known |
 | 61 | 1 | Reference time source: 0 unavailable, 1 external TIM2 in ms |
 | 62 | 2 | RX antenna delay |
 | 64 | 4 | MCU SysTick observation time in ms |
@@ -61,11 +63,36 @@ hard-coded payload offset, so future protocol versions can extend the header.
 | 121 | 1 | Signed DW3000 CIR-read status |
 | 122 | 1 | Signed DW3000 register-snapshot status |
 | 123 | 5 | 40-bit coarse `RX_RAWST`, valid when flag bit 7 is set |
-| 128 | N | RX frame or CIR payload |
-| 128+N | 4 | CRC32, little endian |
+| header length | N | RX frame or CIR payload |
+| header length+N | 4 | CRC32, little endian |
 
 Status values are the signed `dw3000_status_t` codes stored in one byte. Zero
 means success. RSSI and first-path power use `0x8000` when unavailable.
+
+## V3 PDoA extension
+
+The following fields occupy bytes 128 through 175 when version is 3. STS0 and
+STS1 records from one UWB frame repeat the same pair metadata so either record
+remains independently inspectable.
+
+| Offset | Size | Field |
+|---:|---:|---|
+| 128 | 1 | CIR source: 0 Ipatov, 1 STS0, 2 STS1 |
+| 129 | 1 | Number of CIR records in this capture group, 2 for Mode 3 |
+| 130 | 1 | RF port associated with this CIR source |
+| 131 | 1 | Signed PDoA diagnostic read status |
+| 132 | 5 | 40-bit Ipatov ToA |
+| 137 | 5 | 40-bit STS0 ToA |
+| 142 | 5 | 40-bit STS1 ToA |
+| 147 | 1 | Ipatov CIA status |
+| 148 | 2 | STS0 CIA status |
+| 150 | 2 | STS1 CIA status |
+| 152 | 2 | Ipatov phase of arrival |
+| 154 | 2 | STS0 phase of arrival |
+| 156 | 2 | STS1 phase of arrival |
+| 158 | 2 | Signed PDoA, Q1.11 radians |
+| 160 | 8 | Sign-extended 41-bit TDoA in device time units |
+| 168 | 8 | Reserved, zero |
 
 ## Flags
 
@@ -79,6 +106,7 @@ means success. RSSI and first-path power use `0x8000` when unavailable.
 | 5 | `0x0020` | Register snapshot is valid |
 | 6 | `0x0040` | External TIM2 timestamp is valid |
 | 7 | `0x0080` | Coarse `RX_RAWST` is valid |
+| 8 | `0x0100` | V3 PDoA/ToA extension is valid |
 
 The RX frame packet has one payload containing the received IEEE 802.15.4
 frame. CIR packets contain up to 80 complex samples. `capture_id`,
@@ -114,10 +142,10 @@ be plotted across packets to test whether the remaining preamble/SFD alignment
 term is constant for a fixed radio profile. Do not assume it is constant
 without measurement because the manual describes additional CIA adjustments.
 
-Separate `IP_TOA` and `STS_TOA` are not carried. With the current
-`STS_MODE=OFF` profile, `RX_STAMP` is the Ipatov CIA result and is also written
-to `IP_TOA`. A future STS-enabled profile should export both TOA values
-explicitly.
+HCIR v2 does not carry separate CIA ToAs. HCIR v3 carries Ipatov, STS0, and
+STS1 ToA explicitly. In the dual-antenna diagnostic, the selected CIR's time
+origin is `STS0_TOA` or `STS1_TOA`; offset 20 remains the DW3000's normal
+fully adjusted `RX_STAMP` for compatibility.
 
 ## CRC and resynchronization
 
@@ -128,8 +156,8 @@ width=32 poly=0x04C11DB7 init=0xFFFFFFFF
 refin=false refout=false xorout=0xFFFFFFFF
 ```
 
-This is CRC-32/BZIP2. The CRC covers bytes `[0, 128+N)`; the four CRC bytes are
-excluded. A stream parser searches for `HCIR`, validates the two lengths, waits
+This is CRC-32/BZIP2. The CRC covers the header and payload; the four CRC bytes
+are excluded. A stream parser searches for `HCIR`, validates the two lengths, waits
 for the complete packet, and accepts the boundary only after CRC validation.
 
 ## Throughput
@@ -151,6 +179,11 @@ rendering, and other console messages reduce the practical rate. The host
 recorder writes raw bytes before plotting so display refresh does not determine
 data retention. The static timing experiment uses a 100 ms TX period (10 Hz).
 Full 1016-sample captures therefore consume about 79,670 bytes/s, or 15.9% of
-the ideal 5 Mbps UART payload capacity. The two RX capture slots and 16 KiB
+the ideal 5 Mbps UART payload capacity. The four RX capture slots and 16 KiB
 UART DMA ring provide additional burst tolerance; monitor `QFULL` and
 `UART_ERR` during hardware runs to detect practical overload.
+
+The Mode-3 diagnostic exports two 512-sample HCIR v3 records per received UWB
+frame. With a typical 23-byte frame this is approximately 9,070 UART bytes,
+18.1 ms at 5 Mbps, or 90.7 kB/s at the 100 ms TX interval. Four MCU capture
+slots hold two complete antenna pairs while the UART DMA queue drains.

@@ -33,8 +33,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define HOPWINS_BOARD_VARIANT                  BOARD_VARIANT_UWB_RF1_SIT5156
-#define HOPWINS_APP_WORKFLOW                   APP_WORKFLOW_DO_FOLLOWER
+#define HOPWINS_BOARD_VARIANT                  BOARD_VARIANT_FULL_SIT5156
+#define HOPWINS_APP_WORKFLOW                   APP_WORKFLOW_UWB_STS_DUAL_RX_DIAGNOSTIC
 #define HOPWINS_UWB_RF_MODE                    DW3000_RF_MODE_MANUAL_1
 #define HOPWINS_UWB_PDOA_MODE                  DW3000_PDOA_MODE_DISABLED
 #define HOPWINS_CIR_SAMPLE_COUNT               0U

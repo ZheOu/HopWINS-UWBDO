@@ -29,6 +29,7 @@ static bool s_rx_pending;
 static bool s_rx_data_ready;
 static uint16_t s_max_frame_len;
 static uint16_t s_cir_sample_count;
+static dw3000_radio_config_t s_radio_config;
 
 static dw3000_status_t validate_radio_config(
     const dw3000_radio_config_t *config);
@@ -38,9 +39,12 @@ static dw3000_status_t prepare_transmit(
     uint16_t frame_len);
 static bool sts_length_is_valid(uint16_t sts_length);
 static dwt_sts_lengths_e sts_length_to_sdk(uint16_t sts_length);
+static bool cir_source_is_available(dw3000_cir_source_t source);
+static dwt_acc_idx_e cir_source_to_sdk(dw3000_cir_source_t source);
 static uint64_t timestamp_from_little_endian(
     const uint8_t *timestamp,
     uint32_t len);
+static int64_t signed_41_from_little_endian(const uint8_t *value);
 
 static void record_transport_status(int32_t status)
 {
@@ -164,11 +168,13 @@ dw3000_status_t dw3000_configure_radio(
     .phrMode = config->extended_phr ? DWT_PHRMODE_EXT : DWT_PHRMODE_STD,
     .phrRate = DWT_PHRRATE_STD,
     .sfdTO = config->sfd_timeout,
-    .stsMode = (config->sts_mode == DW3000_STS_MODE_1)
-                   ? DWT_STS_MODE_1
-               : (config->sts_mode == DW3000_STS_MODE_2)
-                   ? DWT_STS_MODE_2
-                   : DWT_STS_MODE_OFF,
+    .stsMode = (uint8_t)(
+        ((config->sts_mode == DW3000_STS_MODE_1)
+             ? DWT_STS_MODE_1
+         : (config->sts_mode == DW3000_STS_MODE_2)
+             ? DWT_STS_MODE_2
+             : DWT_STS_MODE_OFF) |
+        (config->sts_sdc ? DWT_STS_MODE_SDC : 0U)),
     .stsLength = (config->sts_mode == DW3000_STS_OFF)
                      ? DW3000_STS_DEFAULT_LENGTH
                      : sts_length_to_sdk(config->sts_length),
@@ -235,6 +241,7 @@ dw3000_status_t dw3000_configure_radio(
       (config->rx_preamble_code >= PCODE_PRF64_START)
           ? DWT_CIR_LEN_IP_PRF64
           : DWT_CIR_LEN_IP_PRF16;
+  s_radio_config = *config;
   device->configured = true;
   return DW3000_STATUS_OK;
 }
@@ -483,6 +490,11 @@ dw3000_status_t dw3000_poll_receive(
     return DW3000_STATUS_SPI_ERROR;
   }
 
+  if (((system_status & DWT_INT_RXFCG_BIT_MASK) != 0U) &&
+      ((system_status & DWT_INT_CIADONE_BIT_MASK) == 0U)) {
+    return DW3000_STATUS_OK;
+  }
+
   if ((system_status & DWT_INT_RXFCG_BIT_MASK) != 0U) {
     frame_len = dwt_getframelength(&ranging_flags);
     if ((frame_len == 0U) || (frame_len > frame_capacity) ||
@@ -571,23 +583,29 @@ dw3000_status_t dw3000_read_rx_register_snapshot(
 }
 
 uint16_t dw3000_get_cir_sample_count(
-    const dw3000_device_t *device)
+    const dw3000_device_t *device,
+    dw3000_cir_source_t source)
 {
   if ((device == NULL) || !device->initialized || !device->configured ||
-      !s_sdk_ready) {
+      !s_sdk_ready || !cir_source_is_available(source)) {
     return 0U;
   }
 
-  return s_cir_sample_count;
+  return (source == DW3000_CIR_SOURCE_IPATOV)
+             ? s_cir_sample_count
+             : DW3000_STS_CIR_SAMPLES;
 }
 
 dw3000_status_t dw3000_read_cir_diagnostics(
     const dw3000_device_t *device,
+    dw3000_cir_source_t source,
     dw3000_cir_diagnostic_t *diagnostic)
 {
   dwt_cirdiags_t sdk_diagnostic = {0};
+  dwt_acc_idx_e sdk_source;
 
-  if ((device == NULL) || (diagnostic == NULL)) {
+  if ((device == NULL) || (diagnostic == NULL) ||
+      !cir_source_is_available(source)) {
     return DW3000_STATUS_BAD_ARG;
   }
   if (!device->initialized || !device->configured || !s_sdk_ready ||
@@ -596,7 +614,8 @@ dw3000_status_t dw3000_read_cir_diagnostics(
   }
 
   s_transport_error = 0;
-  if (dwt_readdiagnostics_acc(&sdk_diagnostic, DWT_ACC_IDX_IP_M) !=
+  sdk_source = cir_source_to_sdk(source);
+  if (dwt_readdiagnostics_acc(&sdk_diagnostic, sdk_source) !=
       (int32_t)DWT_SUCCESS) {
     return (s_transport_error != 0)
                ? DW3000_STATUS_SPI_ERROR
@@ -621,11 +640,11 @@ dw3000_status_t dw3000_read_cir_diagnostics(
 
   (void)dwt_calculate_rssi(
       &sdk_diagnostic,
-      DWT_ACC_IDX_IP_M,
+      sdk_source,
       &diagnostic->rssi_q8_8);
   (void)dwt_calculate_first_path_power(
       &sdk_diagnostic,
-      DWT_ACC_IDX_IP_M,
+      sdk_source,
       &diagnostic->first_path_power_q8_8);
 
   return (s_transport_error == 0)
@@ -635,14 +654,16 @@ dw3000_status_t dw3000_read_cir_diagnostics(
 
 dw3000_status_t dw3000_read_cir_48b(
     const dw3000_device_t *device,
+    dw3000_cir_source_t source,
     uint16_t sample_offset,
     uint16_t sample_count,
     uint8_t *samples)
 {
   uint32_t sample_end = (uint32_t)sample_offset + sample_count;
+  uint16_t available_samples = dw3000_get_cir_sample_count(device, source);
 
   if ((device == NULL) || (samples == NULL) || (sample_count == 0U) ||
-      (sample_end > s_cir_sample_count)) {
+      (available_samples == 0U) || (sample_end > available_samples)) {
     return DW3000_STATUS_BAD_ARG;
   }
   if (!device->initialized || !device->configured || !s_sdk_ready ||
@@ -653,7 +674,7 @@ dw3000_status_t dw3000_read_cir_48b(
   s_transport_error = 0;
   if (dwt_readcir_48b(
           samples,
-          DWT_ACC_IDX_IP_M,
+          cir_source_to_sdk(source),
           sample_offset,
           sample_count) != (int32_t)DWT_SUCCESS) {
     return (s_transport_error != 0)
@@ -664,6 +685,49 @@ dw3000_status_t dw3000_read_cir_48b(
   return (s_transport_error == 0)
              ? DW3000_STATUS_OK
              : DW3000_STATUS_SPI_ERROR;
+}
+
+dw3000_status_t dw3000_read_pdoa_diagnostics(
+    const dw3000_device_t *device,
+    dw3000_pdoa_diagnostic_t *diagnostic)
+{
+  dwt_rxdiag_t sdk_diagnostic = {0};
+
+  if ((device == NULL) || (diagnostic == NULL)) {
+    return DW3000_STATUS_BAD_ARG;
+  }
+  if (!device->initialized || !device->configured || !s_sdk_ready ||
+      !s_rx_data_ready ||
+      (s_radio_config.pdoa_mode == DW3000_PDOA_MODE_DISABLED)) {
+    return DW3000_STATUS_NOT_READY;
+  }
+
+  s_transport_error = 0;
+  dwt_readdiagnostics(&sdk_diagnostic);
+  if (s_transport_error != 0) {
+    return DW3000_STATUS_SPI_ERROR;
+  }
+
+  *diagnostic = (dw3000_pdoa_diagnostic_t){
+    .ipatov_timestamp = timestamp_from_little_endian(
+        sdk_diagnostic.ipatovRxTime,
+        (uint32_t)sizeof(sdk_diagnostic.ipatovRxTime)),
+    .sts0_timestamp = timestamp_from_little_endian(
+        sdk_diagnostic.stsRxTime,
+        (uint32_t)sizeof(sdk_diagnostic.stsRxTime)),
+    .sts1_timestamp = timestamp_from_little_endian(
+        sdk_diagnostic.sts2RxTime,
+        (uint32_t)sizeof(sdk_diagnostic.sts2RxTime)),
+    .tdoa = signed_41_from_little_endian(sdk_diagnostic.tdoa),
+    .ipatov_status = sdk_diagnostic.ipatovRxStatus,
+    .sts0_status = sdk_diagnostic.stsRxStatus,
+    .sts1_status = sdk_diagnostic.sts2RxStatus,
+    .ipatov_phase = sdk_diagnostic.ipatovPOA,
+    .sts0_phase = sdk_diagnostic.stsPOA,
+    .sts1_phase = sdk_diagnostic.sts2POA,
+    .pdoa = sdk_diagnostic.pdoa,
+  };
+  return DW3000_STATUS_OK;
 }
 
 dw3000_status_t dw3000_init(
@@ -686,6 +750,7 @@ dw3000_status_t dw3000_init(
   s_rx_data_ready = false;
   s_max_frame_len = 0U;
   s_cir_sample_count = 0U;
+  s_radio_config = (dw3000_radio_config_t){0};
   dw3000_qorvo_adapter_bind(platform, record_transport_status);
 
   if (s_platform->spi_set_slow_rate() != 0) {
@@ -795,6 +860,12 @@ static dw3000_status_t validate_radio_config(
        (config->rf_mode > DW3000_RF_MODE_AUTO_2_1)) ||
       (automatic_rf_mode !=
        (config->pdoa_mode != DW3000_PDOA_MODE_DISABLED)) ||
+      (config->sts_sdc && (config->sts_mode == DW3000_STS_OFF)) ||
+      ((config->pdoa_mode != DW3000_PDOA_MODE_DISABLED) &&
+       (config->sts_mode == DW3000_STS_OFF)) ||
+      ((config->pdoa_mode == DW3000_PDOA_MODE_3) &&
+       ((config->sts_length < 128U) ||
+        ((config->sts_length % 128U) != 0U))) ||
       ((config->sts_mode != DW3000_STS_OFF) &&
        !sts_length_is_valid(config->sts_length))) {
     return DW3000_STATUS_BAD_ARG;
@@ -840,6 +911,34 @@ static dwt_sts_lengths_e sts_length_to_sdk(uint16_t sts_length)
     case 64U:
     default:
       return DWT_STS_LEN_64;
+  }
+}
+
+static bool cir_source_is_available(dw3000_cir_source_t source)
+{
+  switch (source) {
+    case DW3000_CIR_SOURCE_IPATOV:
+      return true;
+    case DW3000_CIR_SOURCE_STS0:
+      return s_radio_config.sts_mode != DW3000_STS_OFF;
+    case DW3000_CIR_SOURCE_STS1:
+      return (s_radio_config.sts_mode != DW3000_STS_OFF) &&
+             (s_radio_config.pdoa_mode == DW3000_PDOA_MODE_3);
+    default:
+      return false;
+  }
+}
+
+static dwt_acc_idx_e cir_source_to_sdk(dw3000_cir_source_t source)
+{
+  switch (source) {
+    case DW3000_CIR_SOURCE_STS0:
+      return DWT_ACC_IDX_STS0_M;
+    case DW3000_CIR_SOURCE_STS1:
+      return DWT_ACC_IDX_STS1_M;
+    case DW3000_CIR_SOURCE_IPATOV:
+    default:
+      return DWT_ACC_IDX_IP_M;
   }
 }
 
@@ -897,4 +996,15 @@ static uint64_t timestamp_from_little_endian(
   }
 
   return value;
+}
+
+static int64_t signed_41_from_little_endian(const uint8_t *value)
+{
+  const uint64_t mask = (UINT64_C(1) << 41U) - 1U;
+  uint64_t raw = timestamp_from_little_endian(value, 6U) & mask;
+
+  if ((raw & (UINT64_C(1) << 40U)) != 0U) {
+    raw |= ~mask;
+  }
+  return (int64_t)raw;
 }

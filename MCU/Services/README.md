@@ -57,6 +57,16 @@ The DW3000 appends the two-byte FCS. The service schedules each frame from the
 previous target time so software latency does not accumulate into the radio
 interval.
 
+## STS/PDoA diagnostic
+
+`Diagnostics/UWB/uwb_sts_diagnostic_service.c` provides explicit TX and dual-RX
+workflows. Both use STS Mode 1 with SDC and 256 symbols. TX sends from RF1 at
+the normal 100 ms interval; RX uses PDoA Mode 3 with automatic RF1-to-RF2
+switching, waits for `CIADONE`, and reads the complete STS0 and STS1
+accumulators before re-enabling reception. It does not configure the FPGA or
+run clock discipline. The workflow dispatcher applies this fixed diagnostic
+radio profile so ordinary Leader/Follower profiles remain unchanged.
+
 ## PC UART transport
 
 USART1 runs at 5 Mbps with its hardware FIFO enabled and GPDMA1 Channel 0
@@ -106,20 +116,23 @@ complete accumulator (1016 samples for the default PRF64 code). A smaller value
 captures a window around the detected first path;
 `HOPWINS_CIR_PRE_FIRST_PATH_SAMPLES` controls how many samples precede it.
 
-`SERIAL_CAPTURE_FORMAT_HCIR_V2` exports one frame packet followed by
-CRC-protected CIR chunks through the USART1 DMA queue. See
-[`Communication/Serial/HCIR_V2_PROTOCOL.md`](Communication/Serial/HCIR_V2_PROTOCOL.md) for the binary layout,
-CRC parameters, and throughput budget.
+`SERIAL_CAPTURE_FORMAT_HCIR_V2` preserves the original single-CIR wire format.
+`SERIAL_CAPTURE_FORMAT_HCIR_V3` adds CIR source and PDoA/STS metadata. See
+[`Communication/Serial/HCIR_PROTOCOL.md`](Communication/Serial/HCIR_PROTOCOL.md)
+for both layouts, CRC parameters, and throughput budgets.
 
 `SERIAL_CAPTURE_FORMAT_TEXT_V1` emits one CRC-protected, human-readable metadata
 record per received frame without CIR samples. `SERIAL_CAPTURE_FORMAT_OFF` is
 the low-overhead clock-tracking mode. HCIR v2 remains byte-for-byte compatible
-with the Python parser; a future custom timestamp field belongs in HCIR v3.
+with existing recordings, while HCIR v3 identifies paired STS accumulators by
+one shared capture ID and separate CIR-source fields.
 
-RX uses two frame/CIR capture slots. After the driver has copied one frame,
+RX uses four frame/CIR capture slots. After the driver has copied one frame,
 register snapshot, diagnostics, and accumulator data, it immediately re-arms
-the DW3000 into the other slot while Console exports the first. RX pauses only
-when both slots are queued, which is reported by the `QFULL` health counter.
+the DW3000 when enough slots remain for the selected capture group. A normal
+Ipatov capture consumes one slot; a Mode-3 STS0/STS1 pair consumes two. RX
+pauses only when the next complete group cannot fit, which is reported by the
+`QFULL` health counter.
 This removes the full UART wire time from the normal receive blind interval.
 
 The Follower retries failed UWB initialization once per second. During normal

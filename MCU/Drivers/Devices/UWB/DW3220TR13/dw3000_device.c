@@ -3176,7 +3176,7 @@ static void ull_readdiagnostics(dwchip_t *dw, dwt_rxdiag_t *diagnostics)
 
         // RX status info for STS
         diagnostics->sts2RxStatus = ((((uint16_t)temp[STS1_TOA_HI_ID - IP_TOA_LO_ID + CIA_C_STAT_OFFSET + 1UL] << 8U) |
-                                       (uint16_t)temp[STS_TOA_HI_ID - IP_TOA_LO_ID + CIA_C_STAT_OFFSET]) >> 7U);
+                                       (uint16_t)temp[STS1_TOA_HI_ID - IP_TOA_LO_ID + CIA_C_STAT_OFFSET]) >> 7U);
         // Phase of arrival as computed from the STS 1 CIR (signed rad*2-12)
         diagnostics->sts2POA = (((uint16_t)temp[STS1_TOA_HI_ID - IP_TOA_LO_ID + 2UL] << 8U) |
                                  (uint16_t)temp[STS1_TOA_HI_ID - IP_TOA_LO_ID + 1UL]);
