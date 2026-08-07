@@ -1,16 +1,19 @@
-"""Layered project configuration for host tasks and connected devices."""
+"""TOML configuration for devices, tasks, and experiment storage."""
 
 from __future__ import annotations
 
-import configparser
+import copy
 import os
+import re
+import tomllib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 
 class ConfigurationError(ValueError):
-    """Raised when a project configuration is missing or invalid."""
+    """Raised when project configuration is missing or invalid."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,16 +31,16 @@ class DeviceConfig:
 
 
 class ProjectConfig:
-    """Effective configuration loaded from a shared file and local overlay."""
+    """Effective configuration loaded from shared and local TOML files."""
 
     def __init__(
         self,
         path: Path,
-        parser: configparser.ConfigParser,
+        data: dict[str, Any],
         loaded_paths: tuple[Path, ...],
     ) -> None:
         self.path = path
-        self._parser = parser
+        self._data = data
         self.loaded_paths = loaded_paths
 
     @classmethod
@@ -49,62 +52,75 @@ class ProjectConfig:
         )
         if not config_path.is_file():
             raise ConfigurationError(f"configuration file not found: {config_path}")
+        if config_path.suffix.casefold() != ".toml":
+            raise ConfigurationError("HopWINS configuration must be a TOML file")
 
-        parser = configparser.ConfigParser(interpolation=None)
+        data = _read_toml(config_path)
         loaded_paths = [config_path]
-        local_path = config_path.parent / "config.local.ini"
+        local_path = config_path.with_name("config.local.toml")
         if local_path != config_path and local_path.is_file():
+            _deep_merge(data, _read_toml(local_path))
             loaded_paths.append(local_path)
-        loaded = parser.read(loaded_paths, encoding="utf-8")
-        if len(loaded) != len(loaded_paths):
-            raise ConfigurationError("failed to read all configuration files")
-        if not parser.has_section("app"):
-            raise ConfigurationError("configuration requires an [app] section")
-        return cls(config_path, parser, tuple(loaded_paths))
+        if not isinstance(data.get("app"), dict):
+            raise ConfigurationError("configuration requires an [app] table")
+        return cls(config_path, data, tuple(loaded_paths))
 
     @property
     def task_name(self) -> str:
-        value = self._parser.get("app", "task", fallback="").strip()
+        value = str(self._table("app").get("task", "")).strip()
         if not value:
             raise ConfigurationError("[app] task must not be empty")
         return value
 
     @property
     def device_name(self) -> str | None:
-        return _optional_text(self._parser.get("app", "device", fallback=""))
+        return _optional_text(self._table("app").get("device"))
 
     def device(self, name: str | None = None) -> DeviceConfig:
         device_name = name or self.device_name
         if not device_name:
             raise ConfigurationError("this task requires [app] device or --device")
-        section = f"device.{device_name}"
-        if not self._parser.has_section(section):
-            raise ConfigurationError(f"missing [{section}] section")
+        devices = self._table("devices")
+        raw = devices.get(device_name)
+        if not isinstance(raw, dict):
+            raise ConfigurationError(f"missing [devices.{device_name}] table")
 
-        port = self._parser.get(section, "port", fallback="").strip()
+        port = str(raw.get("port", "")).strip()
         if not port:
-            raise ConfigurationError(f"[{section}] port must not be empty")
-        baudrate = self._get_int(section, "baudrate", fallback=5_000_000)
-        timeout_s = self._get_float(section, "timeout_s", fallback=0.1)
+            raise ConfigurationError(f"[devices.{device_name}] port must not be empty")
+        baudrate = _as_int(raw.get("baudrate", 5_000_000), "baudrate")
+        timeout_s = _as_float(raw.get("timeout_s", 0.1), "timeout_s")
         if baudrate <= 0:
-            raise ConfigurationError(f"[{section}] baudrate must be positive")
+            raise ConfigurationError("baudrate must be positive")
         if timeout_s <= 0:
-            raise ConfigurationError(f"[{section}] timeout_s must be positive")
+            raise ConfigurationError("timeout_s must be positive")
 
         return DeviceConfig(
             name=device_name,
             port=port,
             baudrate=baudrate,
             timeout_s=timeout_s,
-            vid=self._get_optional_int(section, "vid"),
-            pid=self._get_optional_int(section, "pid"),
-            serial_number=self._get_optional_text(section, "serial_number"),
-            description_contains=self._get_optional_text(
-                section, "description_contains"
-            ),
-            expected_board=self._get_optional_text(section, "expected_board"),
-            expected_role=self._get_optional_text(section, "expected_role"),
+            vid=_optional_int(raw.get("vid"), "vid"),
+            pid=_optional_int(raw.get("pid"), "pid"),
+            serial_number=_optional_text(raw.get("serial_number")),
+            description_contains=_optional_text(raw.get("description_contains")),
+            expected_board=_optional_text(raw.get("expected_board")),
+            expected_role=_optional_text(raw.get("expected_role")),
         )
+
+    def task_parameters(
+        self,
+        task_name: str,
+        overrides: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        tasks = self._table("tasks")
+        raw = tasks.get(task_name, {})
+        if not isinstance(raw, dict):
+            raise ConfigurationError(f"[tasks.{task_name}] must be a table")
+        parameters: dict[str, object] = copy.deepcopy(raw)
+        if overrides:
+            parameters.update(overrides)
+        return parameters
 
     def task_text(
         self,
@@ -113,7 +129,8 @@ class ProjectConfig:
         *,
         fallback: str = "",
     ) -> str:
-        return self._parser.get(f"task.{task_name}", option, fallback=fallback).strip()
+        value = self.task_parameters(task_name).get(option, fallback)
+        return str(value).strip()
 
     def task_bool(
         self,
@@ -122,14 +139,10 @@ class ProjectConfig:
         *,
         fallback: bool,
     ) -> bool:
-        try:
-            return self._parser.getboolean(
-                f"task.{task_name}", option, fallback=fallback
-            )
-        except ValueError as exc:
-            raise ConfigurationError(
-                f"[task.{task_name}] {option} must be a boolean"
-            ) from exc
+        value = self.task_parameters(task_name).get(option, fallback)
+        if isinstance(value, bool):
+            return value
+        raise ConfigurationError(f"[tasks.{task_name}] {option} must be a boolean")
 
     def task_int(
         self,
@@ -138,7 +151,8 @@ class ProjectConfig:
         *,
         fallback: int,
     ) -> int:
-        return self._get_int(f"task.{task_name}", option, fallback=fallback)
+        value = self.task_parameters(task_name).get(option, fallback)
+        return _as_int(value, f"[tasks.{task_name}] {option}")
 
     def task_float(
         self,
@@ -147,99 +161,84 @@ class ProjectConfig:
         *,
         fallback: float,
     ) -> float:
-        return self._get_float(f"task.{task_name}", option, fallback=fallback)
+        value = self.task_parameters(task_name).get(option, fallback)
+        return _as_float(value, f"[tasks.{task_name}] {option}")
 
-    def resolve_path(self, value: str) -> Path:
+    def resolve_path(self, value: str | Path) -> Path:
         path = Path(value).expanduser()
         if path.is_absolute():
             return path
         return (self.path.parent / path).resolve()
 
+    def experiment_directory(self) -> Path:
+        storage = self._table("storage")
+        directory = str(storage.get("experiment_directory", "experiments"))
+        return self.resolve_path(directory)
+
+    def new_session_path(
+        self,
+        task_name: str,
+        device_name: str | None,
+        label: str | None,
+    ) -> Path:
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        parts = [timestamp, _safe_name(task_name)]
+        if device_name:
+            parts.append(_safe_name(device_name))
+        if label:
+            parts.append(_safe_name(label))
+        return self.experiment_directory() / "_".join(parts)
+
     def new_capture_path(self, task_name: str, device_name: str) -> Path:
-        directory = self.resolve_path(
-            self._parser.get(
-                "storage",
-                "capture_directory",
-                fallback="captures",
+        """Compatibility path for legacy single-file capture tasks."""
+        storage = self._table("storage")
+        directory = self.resolve_path(str(storage.get("capture_directory", "captures")))
+        template = str(
+            storage.get(
+                "filename_template",
+                "{timestamp}_{device}_{task}.hcir",
             )
-        )
-        template = self._parser.get(
-            "storage",
-            "filename_template",
-            fallback="{timestamp}_{device}_{task}.hcir",
         )
         values = {
             "timestamp": datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
-            "device": device_name,
-            "task": task_name,
+            "device": _safe_name(device_name),
+            "task": _safe_name(task_name),
         }
         try:
             filename = template.format_map(values)
         except (KeyError, ValueError) as exc:
-            raise ConfigurationError(
-                "[storage] filename_template may use only "
-                "{timestamp}, {device}, and {task}"
-            ) from exc
+            raise ConfigurationError("invalid [storage] filename_template") from exc
         if not filename or Path(filename).name != filename:
-            raise ConfigurationError(
-                "[storage] filename_template must produce a file name"
-            )
+            raise ConfigurationError("filename_template must produce one file name")
         return directory / filename
 
     def latest_capture_path(self) -> Path:
-        directory = self.resolve_path(
-            self._parser.get(
-                "storage",
-                "capture_directory",
-                fallback="captures",
-            )
+        storage = self._table("storage")
+        capture_directory = self.resolve_path(
+            str(storage.get("capture_directory", "captures"))
         )
-        captures = list(directory.glob("*.hcir"))
-        if not captures:
-            raise ConfigurationError(f"no .hcir captures found in {directory}")
-        return max(captures, key=lambda path: path.stat().st_mtime_ns)
+        candidates = [
+            path
+            for path in capture_directory.glob("*.hcir")
+            if path.stat().st_size > 0
+        ]
+        candidates.extend(
+            path
+            for path in self.experiment_directory().glob("*/raw/serial.bin")
+            if path.stat().st_size > 0
+        )
+        if not candidates:
+            raise ConfigurationError("no recorded serial streams found")
+        return max(candidates, key=lambda path: path.stat().st_mtime_ns)
 
-    def snapshot(self) -> dict[str, dict[str, str]]:
-        return {
-            section: dict(self._parser.items(section))
-            for section in self._parser.sections()
-        }
+    def snapshot(self) -> dict[str, object]:
+        return copy.deepcopy(self._data)
 
-    def _get_optional_text(self, section: str, option: str) -> str | None:
-        return _optional_text(self._parser.get(section, option, fallback=""))
-
-    def _get_optional_int(self, section: str, option: str) -> int | None:
-        value = self._parser.get(section, option, fallback="").strip()
-        if not value:
-            return None
-        try:
-            return int(value, 0)
-        except ValueError as exc:
-            raise ConfigurationError(
-                f"[{section}] {option} must be an integer"
-            ) from exc
-
-    def _get_int(self, section: str, option: str, *, fallback: int) -> int:
-        value = self._parser.get(section, option, fallback=str(fallback))
-        try:
-            return int(value, 0)
-        except ValueError as exc:
-            raise ConfigurationError(
-                f"[{section}] {option} must be an integer"
-            ) from exc
-
-    def _get_float(
-        self,
-        section: str,
-        option: str,
-        *,
-        fallback: float,
-    ) -> float:
-        value = self._parser.get(section, option, fallback=str(fallback))
-        try:
-            return float(value)
-        except ValueError as exc:
-            raise ConfigurationError(f"[{section}] {option} must be a number") from exc
+    def _table(self, name: str) -> dict[str, Any]:
+        value = self._data.get(name, {})
+        if not isinstance(value, dict):
+            raise ConfigurationError(f"[{name}] must be a table")
+        return value
 
 
 def find_default_config() -> Path:
@@ -247,10 +246,10 @@ def find_default_config() -> Path:
     if environment_path:
         return Path(environment_path).expanduser().resolve()
 
-    source_tree_path = Path(__file__).resolve().parents[2] / "config.ini"
+    source_tree_path = Path(__file__).resolve().parents[2] / "config.toml"
     candidates = (
-        Path.cwd() / "config.ini",
-        Path.cwd() / "Python" / "config.ini",
+        Path.cwd() / "config.toml",
+        Path.cwd() / "Python" / "config.toml",
         source_tree_path,
     )
     for candidate in candidates:
@@ -259,6 +258,57 @@ def find_default_config() -> Path:
     return source_tree_path
 
 
-def _optional_text(value: str) -> str | None:
-    stripped = value.strip()
+def _read_toml(path: Path) -> dict[str, Any]:
+    try:
+        with path.open("rb") as stream:
+            data = tomllib.load(stream)
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        raise ConfigurationError(f"failed to read configuration: {path}") from exc
+    return data
+
+
+def _deep_merge(target: dict[str, Any], overlay: dict[str, Any]) -> None:
+    for key, value in overlay.items():
+        current = target.get(key)
+        if isinstance(current, dict) and isinstance(value, dict):
+            _deep_merge(current, value)
+        else:
+            target[key] = copy.deepcopy(value)
+
+
+def _optional_text(value: object) -> str | None:
+    if value is None:
+        return None
+    stripped = str(value).strip()
     return stripped or None
+
+
+def _optional_int(value: object, name: str) -> int | None:
+    if value is None or value == "":
+        return None
+    return _as_int(value, name)
+
+
+def _as_int(value: object, name: str) -> int:
+    if isinstance(value, bool):
+        raise ConfigurationError(f"{name} must be an integer")
+    if isinstance(value, int):
+        return value
+    try:
+        return int(str(value), 0)
+    except ValueError as exc:
+        raise ConfigurationError(f"{name} must be an integer") from exc
+
+
+def _as_float(value: object, name: str) -> float:
+    if isinstance(value, bool):
+        raise ConfigurationError(f"{name} must be a number")
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise ConfigurationError(f"{name} must be a number") from exc
+
+
+def _safe_name(value: str) -> str:
+    safe = re.sub(r"[^A-Za-z0-9_-]+", "-", value.strip()).strip("-_")
+    return safe or "session"

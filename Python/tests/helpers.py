@@ -3,7 +3,13 @@ from __future__ import annotations
 import struct
 
 from hopwins.protocol.crc import crc32_bzip2
-from hopwins.protocol.packets import V2_HEADER_LENGTH, PacketFlags, PacketType
+from hopwins.protocol.packets import (
+    V2_HEADER_LENGTH,
+    V3_HEADER_LENGTH,
+    CirSource,
+    PacketFlags,
+    PacketType,
+)
 
 
 def build_v2_packet(
@@ -81,5 +87,66 @@ def build_v2_packet(
             5,
             "little",
         )
+    packet = bytes(header) + payload
+    return packet + struct.pack("<I", crc32_bzip2(packet))
+
+
+def build_v3_packet(
+    packet_type: PacketType,
+    *,
+    capture_id: int = 7,
+    cir_source: CirSource = CirSource.STS0,
+    rf_port: int = 1,
+    chunk_index: int = 0,
+    chunk_count: int = 1,
+    payload: bytes = b"",
+    capture_sample_offset: int = 100,
+    payload_sample_offset: int = 100,
+    payload_sample_count: int = 0,
+    capture_sample_count: int = 0,
+    pdoa_q1_11: int = -512,
+    tdoa_dtu: int = -33,
+) -> bytes:
+    base = build_v2_packet(
+        packet_type,
+        capture_id=capture_id,
+        chunk_index=chunk_index,
+        chunk_count=chunk_count,
+        payload=payload,
+        flags=(
+            PacketFlags.RX_CRC_GOOD
+            | PacketFlags.CIR_FULL_48BIT
+            | PacketFlags.DIAGNOSTIC_OK
+            | PacketFlags.CIR_VALID
+            | PacketFlags.REGISTERS_OK
+            | PacketFlags.REFERENCE_TIME_VALID
+            | PacketFlags.PDOA_DIAGNOSTIC_VALID
+        ),
+        capture_sample_offset=capture_sample_offset,
+        payload_sample_offset=payload_sample_offset,
+        payload_sample_count=payload_sample_count,
+        capture_sample_count=capture_sample_count,
+        raw_rx_timestamp=0x1234560000,
+    )
+    header = bytearray(V3_HEADER_LENGTH)
+    header[:V2_HEADER_LENGTH] = base[:V2_HEADER_LENGTH]
+    header[4] = 3
+    struct.pack_into("<H", header, 6, V3_HEADER_LENGTH)
+    header[60] = rf_port
+    header[128] = int(cir_source)
+    header[129] = 2
+    header[130] = rf_port
+    header[131] = 0
+    header[132:137] = (0x1234500001).to_bytes(5, "little")
+    header[137:142] = (0x1234500011).to_bytes(5, "little")
+    header[142:147] = (0x1234500022).to_bytes(5, "little")
+    header[147] = 1
+    struct.pack_into("<H", header, 148, 2)
+    struct.pack_into("<H", header, 150, 3)
+    struct.pack_into("<H", header, 152, 100)
+    struct.pack_into("<H", header, 154, 200)
+    struct.pack_into("<H", header, 156, 300)
+    struct.pack_into("<h", header, 158, pdoa_q1_11)
+    struct.pack_into("<q", header, 160, tdoa_dtu)
     packet = bytes(header) + payload
     return packet + struct.pack("<I", crc32_bzip2(packet))

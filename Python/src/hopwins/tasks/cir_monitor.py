@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from hopwins.ui.cir_window import run_live_monitor
 
 if TYPE_CHECKING:
-    from hopwins.tasks.registry import TaskContext
+    from hopwins.core.task import TaskContext
 
 
 def run(
@@ -38,24 +38,13 @@ def run(
 def run_configured(context: TaskContext) -> int:
     device = context.require_device()
     port = context.resolve_port(device)
-    rolling_window = context.config.task_int(
-        context.task_name,
-        "rolling_window",
-        fallback=200,
-    )
+    rolling_window = context.parameter_int("rolling_window", fallback=200)
     if rolling_window <= 0:
         raise ValueError("rolling_window must be positive")
 
     record_path: Path | None = None
-    if context.config.task_bool(
-        context.task_name,
-        "record",
-        fallback=True,
-    ):
-        configured_path = context.config.task_text(
-            context.task_name,
-            "record_path",
-        )
+    if context.parameter_bool("record", fallback=True):
+        configured_path = context.parameter_text("record_path")
         record_path = (
             context.config.resolve_path(configured_path)
             if configured_path

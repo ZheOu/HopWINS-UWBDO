@@ -14,7 +14,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from hopwins.analysis.cir import decode_i24_q24, magnitude_db
 from hopwins.analysis.statistics import CaptureStatistics, StatisticsSnapshot
 from hopwins.capture.assembler import CirCapture
-from hopwins.transport.serial_reader import (
+from hopwins.io.workers import (
     CaptureEvent,
     ProfileEvent,
     ReplayWorker,

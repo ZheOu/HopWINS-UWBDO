@@ -8,6 +8,7 @@ from pathlib import Path
 from hopwins.capture.assembler import CirCapture, CirCaptureAssembler
 from hopwins.protocol.packets import HcirPacket
 from hopwins.protocol.stream_parser import HcirStreamParser
+from hopwins.storage.reader import resolve_raw_stream
 
 
 class CaptureFileReader:
@@ -17,7 +18,7 @@ class CaptureFileReader:
         *,
         block_size: int = 8192,
     ) -> None:
-        self.path = Path(path)
+        self.path = resolve_raw_stream(path)
         self.block_size = block_size
         self.parser = HcirStreamParser()
         self.assembler = CirCaptureAssembler()

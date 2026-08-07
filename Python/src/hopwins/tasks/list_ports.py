@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from hopwins.transport.serial_reader import SerialPortInfo, list_serial_ports
+from hopwins.io.serial import SerialPortInfo, list_serial_ports
 
 if TYPE_CHECKING:
-    from hopwins.tasks.registry import TaskContext
+    from hopwins.core.task import TaskContext
 
 
 def run() -> int:

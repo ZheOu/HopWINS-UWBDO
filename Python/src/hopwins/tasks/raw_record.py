@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from hopwins.transport.serial_reader import (
+from hopwins.io.workers import (
     CaptureEvent,
     ProfileEvent,
     SerialWorker,
@@ -16,7 +16,7 @@ from hopwins.transport.serial_reader import (
 )
 
 if TYPE_CHECKING:
-    from hopwins.tasks.registry import TaskContext
+    from hopwins.core.task import TaskContext
 
 
 def run(
@@ -72,10 +72,7 @@ def run(
 def run_configured(context: TaskContext) -> int:
     device = context.require_device()
     port = context.resolve_port(device)
-    configured_path = context.config.task_text(
-        context.task_name,
-        "output",
-    )
+    configured_path = context.parameter_text("output")
     output = (
         context.config.resolve_path(configured_path)
         if configured_path

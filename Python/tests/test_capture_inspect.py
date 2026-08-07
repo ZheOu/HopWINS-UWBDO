@@ -3,14 +3,58 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from hopwins.capture.reader import CaptureFileReader
+from hopwins.config import ProjectConfig
+from hopwins.core.task import TaskContext, TaskSpec
 from hopwins.protocol.packets import PacketFlags, PacketType
-from hopwins.tasks.capture_inspect import format_capture
+from hopwins.tasks.capture_inspect import format_capture, run_configured
 from tests.helpers import build_v2_packet
 
 
 class CaptureInspectTests(unittest.TestCase):
+    def test_configured_task_prefers_cli_input_and_parameter_overrides(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config_path = root / "config.toml"
+            config_path.write_text(
+                '[app]\ntask = "capture_inspect"\n'
+                '[tasks.capture_inspect]\npath = "latest"\n'
+                "limit = 3\ncir_radius = 4\nframe_bytes = 32\n",
+                encoding="utf-8",
+            )
+            input_path = root / "explicit.hcir"
+            input_path.write_bytes(b"input")
+            context = TaskContext(
+                config=ProjectConfig.load(config_path),
+                spec=TaskSpec(
+                    "capture_inspect",
+                    "analysis",
+                    "test",
+                    "hopwins.tasks.capture_inspect",
+                    supports_online=False,
+                    supports_offline=True,
+                ),
+                mode="offline",
+                input_path=input_path,
+                parameter_overrides={"limit": 2, "cir_radius": 3},
+            )
+
+            with patch(
+                "hopwins.tasks.capture_inspect.run",
+                return_value=0,
+            ) as inspect:
+                result = run_configured(context)
+
+        self.assertEqual(result, 0)
+        inspect.assert_called_once_with(
+            input_path.resolve(),
+            limit=2,
+            cir_radius=3,
+            frame_bytes=32,
+        )
+
     def test_reader_and_formatter_show_fpi_cir_and_timestamp_semantics(
         self,
     ) -> None:

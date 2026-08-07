@@ -1,3 +1,3 @@
-from hopwins.cli import main
+from hopwins.main import main
 
 raise SystemExit(main())

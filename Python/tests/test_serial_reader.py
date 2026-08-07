@@ -3,12 +3,8 @@ from __future__ import annotations
 import queue
 import unittest
 
-from hopwins.transport.serial_reader import (
-    SerialPortInfo,
-    SerialWorker,
-    WorkerEvent,
-    resolve_serial_port,
-)
+from hopwins.io.serial import SerialPortInfo, resolve_serial_port
+from hopwins.io.workers import SerialWorker, WorkerEvent
 
 PORTS = [
     SerialPortInfo(
@@ -64,11 +60,11 @@ class SerialPortSelectionTests(unittest.TestCase):
             "COM5",
             5_000_000,
             events,
-            expected_board="Follower-Full",
+            expected_board="UWB-RF1-SiT5156",
             expected_role="DO-Follower",
         )
         profile = (
-            b"FW PROFILE, BOARD=Leader-UwbOnly, ROLE=DO-Leader, "
+            b"FW PROFILE, BOARD=UWB-RF1, ROLE=DO-Leader, "
             b"BUILD=Debug, FPGA=0, CLOCK=0, EXT_TIMER=0\n"
         )
 

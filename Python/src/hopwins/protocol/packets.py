@@ -9,6 +9,7 @@ from enum import IntEnum, IntFlag
 MAGIC = b"HCIR"
 V1_HEADER_LENGTH = 60
 V2_HEADER_LENGTH = 128
+V3_HEADER_LENGTH = 176
 MIN_HEADER_LENGTH = V1_HEADER_LENGTH
 MAX_HEADER_LENGTH = 512
 MAX_PAYLOAD_LENGTH = 8192
@@ -32,6 +33,13 @@ class PacketFlags(IntFlag):
     REGISTERS_OK = 0x0020
     REFERENCE_TIME_VALID = 0x0040
     RAW_TIMESTAMP_VALID = 0x0080
+    PDOA_DIAGNOSTIC_VALID = 0x0100
+
+
+class CirSource(IntEnum):
+    IPATOV = 0
+    STS0 = 1
+    STS1 = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +91,21 @@ class HcirHeader:
     cir_status: int = 0
     register_status: int = 0
     raw_rx_timestamp: int = 0
+    cir_source: CirSource = CirSource.IPATOV
+    cir_group_size: int = 1
+    cir_source_rf_port: int = 0
+    pdoa_diagnostic_status: int = 0
+    ipatov_timestamp: int = 0
+    sts0_timestamp: int = 0
+    sts1_timestamp: int = 0
+    ipatov_status: int = 0
+    sts0_status: int = 0
+    sts1_status: int = 0
+    ipatov_phase: int = 0
+    sts0_phase: int = 0
+    sts1_phase: int = 0
+    pdoa_q1_11: int = 0
+    tdoa_dtu: int = 0
 
     @property
     def first_path_index(self) -> float:
@@ -122,6 +145,14 @@ class HcirHeader:
             return None
         return correction - self.first_path_index_q10_6
 
+    @property
+    def pdoa_valid(self) -> bool:
+        return bool(self.flags & PacketFlags.PDOA_DIAGNOSTIC_VALID)
+
+    @property
+    def pdoa_radians(self) -> float | None:
+        return self.pdoa_q1_11 / 2048.0 if self.pdoa_valid else None
+
 
 @dataclass(frozen=True, slots=True)
 class HcirPacket:
@@ -143,6 +174,8 @@ def parse_hcir_packet(raw: bytes) -> HcirPacket:
         raise ValueError("invalid HCIR packet length")
     if version >= 2 and header_length < V2_HEADER_LENGTH:
         raise ValueError("HCIR v2 header is too short")
+    if version >= 3 and header_length < V3_HEADER_LENGTH:
+        raise ValueError("HCIR v3 header is too short")
 
     try:
         packet_type = PacketType(raw[5])
@@ -176,6 +209,26 @@ def parse_hcir_packet(raw: bytes) -> HcirPacket:
             "register_status": _i8(raw, 122),
             "raw_rx_timestamp": _u40(raw, 123),
         }
+    if version >= 3:
+        values.update(
+            {
+                "cir_source": CirSource(raw[128]),
+                "cir_group_size": raw[129],
+                "cir_source_rf_port": raw[130],
+                "pdoa_diagnostic_status": _i8(raw, 131),
+                "ipatov_timestamp": _u40(raw, 132),
+                "sts0_timestamp": _u40(raw, 137),
+                "sts1_timestamp": _u40(raw, 142),
+                "ipatov_status": raw[147],
+                "sts0_status": _u16(raw, 148),
+                "sts1_status": _u16(raw, 150),
+                "ipatov_phase": _u16(raw, 152),
+                "sts0_phase": _u16(raw, 154),
+                "sts1_phase": _u16(raw, 156),
+                "pdoa_q1_11": _i16(raw, 158),
+                "tdoa_dtu": _i64(raw, 160),
+            }
+        )
 
     header = HcirHeader(
         version=version,
@@ -235,6 +288,10 @@ def _i32(data: bytes, offset: int) -> int:
 
 def _u64(data: bytes, offset: int) -> int:
     return struct.unpack_from("<Q", data, offset)[0]
+
+
+def _i64(data: bytes, offset: int) -> int:
+    return struct.unpack_from("<q", data, offset)[0]
 
 
 def _u40(data: bytes, offset: int) -> int:

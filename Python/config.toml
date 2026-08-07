@@ -1,0 +1,78 @@
+# Shared, portable defaults. Put machine-specific ports and experiment
+# overrides in config.local.toml; that file is loaded last and is not committed.
+
+[app]
+task = "session_capture"
+device = "follower"
+
+[devices.follower]
+port = "auto"
+baudrate = 5000000
+timeout_s = 0.1
+vid = 0x0483
+pid = 0x3754
+serial_number = ""
+description_contains = ""
+expected_board = "UWB-RF1-SiT5156"
+expected_role = "DO-Follower"
+
+[devices.leader]
+port = "auto"
+baudrate = 5000000
+timeout_s = 0.1
+vid = 0x0483
+pid = 0x3754
+serial_number = ""
+description_contains = ""
+expected_board = "UWB-RF1"
+expected_role = "DO-Leader"
+
+[devices.sts_dual_rx]
+port = "auto"
+baudrate = 5000000
+timeout_s = 0.1
+vid = 0x0483
+pid = 0x3754
+serial_number = ""
+description_contains = ""
+expected_board = "Full-SiT5156"
+expected_role = "UWB-STS-Dual-RX-Diagnostic"
+
+[storage]
+experiment_directory = "experiments"
+capture_directory = "captures"
+filename_template = "{timestamp}_{device}_{task}.hcir"
+
+[tasks.session_capture]
+protocol = "hcir"
+duration_s = 0
+path = "latest"
+replay_speed = 0
+copy_raw = false
+
+[tasks.cir_monitor]
+record = true
+record_path = ""
+rolling_window = 200
+
+[tasks.dual_cir_monitor]
+record = true
+path = "latest"
+replay_speed = 1.0
+refresh_hz = 30
+
+[tasks.raw_record]
+output = ""
+
+[tasks.capture_inspect]
+path = "latest"
+limit = 3
+cir_radius = 4
+frame_bytes = 32
+
+[tasks.replay]
+path = "latest"
+speed = 1.0
+rolling_window = 200
+
+[tasks.list_ports]

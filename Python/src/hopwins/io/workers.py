@@ -1,22 +1,29 @@
-"""Background serial and replay workers for parsed capture events."""
+"""Threaded compatibility workers used by the interactive CIR UI."""
 
 from __future__ import annotations
 
 import queue
 import threading
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 import serial
-from serial.tools import list_ports
 
 from hopwins.capture.assembler import CirCapture, CirCaptureAssembler
-from hopwins.capture.recorder import RawSessionRecorder
-from hopwins.devices.profiles import FirmwareProfile, parse_firmware_profile
+from hopwins.protocol.common_text import FirmwareProfile, parse_firmware_profile
 from hopwins.protocol.packets import HcirPacket
 from hopwins.protocol.stream_parser import HcirStreamParser, TextLine
+from hopwins.storage.reader import resolve_raw_stream
+from hopwins.storage.recorder import RawSessionRecorder
+
+
+class RawSink(Protocol):
+    def write(self, data: bytes) -> None: ...
+
+    def set_profile(self, profile: FirmwareProfile) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,84 +49,14 @@ class WorkerError:
 WorkerEvent = CaptureEvent | ProfileEvent | TextEvent | WorkerError
 
 
-@dataclass(frozen=True, slots=True)
-class SerialPortInfo:
-    device: str
-    description: str
-    hardware_id: str
-    vid: int | None = None
-    pid: int | None = None
-    serial_number: str | None = None
-
-
-def list_serial_ports() -> list[SerialPortInfo]:
-    return [
-        SerialPortInfo(
-            port.device,
-            port.description,
-            port.hwid,
-            port.vid,
-            port.pid,
-            port.serial_number,
-        )
-        for port in list_ports.comports()
-    ]
-
-
-def resolve_serial_port(
-    port_specification: str,
-    *,
-    vid: int | None = None,
-    pid: int | None = None,
-    serial_number: str | None = None,
-    description_contains: str | None = None,
-    available_ports: Sequence[SerialPortInfo] | None = None,
-) -> str:
-    if port_specification.casefold() != "auto":
-        return port_specification
-
-    ports = list(list_serial_ports() if available_ports is None else available_ports)
-    matches = [
-        port
-        for port in ports
-        if (vid is None or port.vid == vid)
-        and (pid is None or port.pid == pid)
-        and (serial_number is None or port.serial_number == serial_number)
-        and (
-            description_contains is None
-            or description_contains.casefold() in port.description.casefold()
-        )
-    ]
-    if len(matches) == 1:
-        return matches[0].device
-
-    filters = (
-        f"VID={_format_hex(vid)}, PID={_format_hex(pid)}, "
-        f"serial={serial_number or '*'}, "
-        f"description={description_contains or '*'}"
-    )
-    if not matches:
-        visible = ", ".join(port.device for port in ports) or "none"
-        raise RuntimeError(
-            f"no serial port matches auto selection ({filters}); "
-            f"available ports: {visible}"
-        )
-    choices = ", ".join(
-        f"{port.device} (serial={port.serial_number or '-'})" for port in matches
-    )
-    raise RuntimeError(
-        "auto serial selection is ambiguous; set port or serial_number "
-        f"for one of: {choices}"
-    )
-
-
-class _EventWorker:
+class EventWorker:
     def __init__(self, event_queue: queue.Queue[WorkerEvent]) -> None:
         self.events = event_queue
         self.parser = HcirStreamParser()
         self.assembler = CirCaptureAssembler()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self.last_error: str | None = None
 
     def start(self) -> None:
         if self._thread is not None:
@@ -140,7 +77,8 @@ class _EventWorker:
         try:
             self._run()
         except Exception as exc:
-            self._put_event(WorkerError(str(exc)))
+            self.last_error = str(exc)
+            self._put_event(WorkerError(self.last_error))
 
     def _run(self) -> None:
         raise NotImplementedError
@@ -148,7 +86,7 @@ class _EventWorker:
     def _process_bytes(
         self,
         data: bytes,
-        recorder: RawSessionRecorder | None = None,
+        recorder: RawSink | None = None,
     ) -> list[CirCapture]:
         captures: list[CirCapture] = []
         if recorder is not None:
@@ -188,7 +126,7 @@ class _EventWorker:
                 pass
 
 
-class SerialWorker(_EventWorker):
+class SerialWorker(EventWorker):
     def __init__(
         self,
         port: str,
@@ -200,6 +138,7 @@ class SerialWorker(_EventWorker):
         expected_board: str | None = None,
         expected_role: str | None = None,
         recorder_metadata: Mapping[str, object] | None = None,
+        raw_sink: RawSink | None = None,
     ) -> None:
         super().__init__(event_queue)
         self.port = port
@@ -209,13 +148,13 @@ class SerialWorker(_EventWorker):
         self.expected_board = expected_board
         self.expected_role = expected_role
         self.recorder_metadata = dict(recorder_metadata or {})
+        self.raw_sink = raw_sink
 
     def _run(self) -> None:
-        recorder = (
-            RawSessionRecorder(self.record_path, self.recorder_metadata)
-            if self.record_path
-            else None
-        )
+        owns_recorder = self.raw_sink is None and self.record_path is not None
+        recorder = self.raw_sink
+        if recorder is None and self.record_path is not None:
+            recorder = RawSessionRecorder(self.record_path, self.recorder_metadata)
         try:
             with serial.Serial(
                 self.port,
@@ -228,7 +167,7 @@ class SerialWorker(_EventWorker):
                     if data:
                         self._process_bytes(data, recorder)
         finally:
-            if recorder is not None:
+            if owns_recorder and isinstance(recorder, RawSessionRecorder):
                 recorder.close()
 
     def _accept_profile(self, profile: FirmwareProfile) -> None:
@@ -243,7 +182,7 @@ class SerialWorker(_EventWorker):
             )
 
 
-class ReplayWorker(_EventWorker):
+class ReplayWorker(EventWorker):
     def __init__(
         self,
         path: str | Path,
@@ -251,7 +190,7 @@ class ReplayWorker(_EventWorker):
         speed: float = 1.0,
     ) -> None:
         super().__init__(event_queue)
-        self.path = Path(path)
+        self.path = resolve_raw_stream(path)
         self.speed = max(speed, 0.01)
 
     def _run(self) -> None:
@@ -267,7 +206,3 @@ class ReplayWorker(_EventWorker):
                         delta_ms = (current_time - previous_time) & 0xFFFFFFFF
                         time.sleep(min(delta_ms / 1000.0 / self.speed, 0.25))
                     previous_time = current_time
-
-
-def _format_hex(value: int | None) -> str:
-    return "*" if value is None else f"0x{value:04X}"

@@ -24,6 +24,8 @@
 /Python/.mypy_cache/
 /Python/**/*.egg-info/
 /Python/config.local.ini
+/Python/config.local.toml
+/Python/experiments/
 /Python/captures/
 
 # FPGA Project: Lattice Radiant

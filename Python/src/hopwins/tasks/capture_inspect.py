@@ -12,9 +12,10 @@ from hopwins.analysis.cir import decode_i24_q24, magnitude_db
 from hopwins.capture.assembler import CirCapture
 from hopwins.capture.reader import CaptureFileReader
 from hopwins.protocol.packets import PacketFlags
+from hopwins.storage.reader import resolve_raw_stream
 
 if TYPE_CHECKING:
-    from hopwins.tasks.registry import TaskContext
+    from hopwins.core.task import TaskContext
 
 DW_TIME_UNIT_SECONDS = 1.0 / (499.2e6 * 128.0)
 DW_TIMESTAMP_MASK = (1 << 40) - 1
@@ -66,35 +67,20 @@ def run(
 
 
 def run_configured(context: TaskContext) -> int:
-    configured_path = context.config.task_text(
-        context.task_name,
-        "path",
-        fallback="latest",
-    )
-    path = (
-        context.config.latest_capture_path()
-        if configured_path.casefold() == "latest"
-        else context.config.resolve_path(configured_path)
-    )
-    if not path.is_file():
-        raise ValueError(f"capture file not found: {path}")
+    configured_path = context.parameter_text("path", fallback="latest")
+    selected_path = context.input_path
+    if selected_path is None:
+        selected_path = (
+            context.config.latest_capture_path()
+            if configured_path.casefold() == "latest"
+            else context.config.resolve_path(configured_path)
+        )
+    path = resolve_raw_stream(selected_path)
     return run(
         path,
-        limit=context.config.task_int(
-            context.task_name,
-            "limit",
-            fallback=3,
-        ),
-        cir_radius=context.config.task_int(
-            context.task_name,
-            "cir_radius",
-            fallback=4,
-        ),
-        frame_bytes=context.config.task_int(
-            context.task_name,
-            "frame_bytes",
-            fallback=32,
-        ),
+        limit=context.parameter_int("limit", fallback=3),
+        cir_radius=context.parameter_int("cir_radius", fallback=4),
+        frame_bytes=context.parameter_int("frame_bytes", fallback=32),
     )
 
 

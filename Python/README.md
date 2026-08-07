@@ -1,22 +1,41 @@
 # HopWINS Python tools
 
-The host tools read the mixed text and binary USART1 stream, validate HCIR
-CRC-32/BZIP2 packets, assemble CIR captures, record raw sessions, and display
-live channel diagnostics.
+The Python project records reproducible experiments and runs the same protocol
+and task code against a live serial stream or a saved session. It keeps raw
+bytes independent from decoding and processing so a newer parser or algorithm
+can always replay an older experiment.
+
+## Architecture
+
+```text
+main.py -> registry -> task
+                       |
+Source -> Decoder -> Record -> Task -> SessionRecorder
+ serial   protocol             |
+ replay                        +-> CSV / JSONL / artifacts
+```
+
+Responsibilities are intentionally narrow:
+
+- `main.py` parses the command and dispatches a registered task.
+- `registry.py` is the explicit list of tasks and their categories/modes.
+- `core/` owns transport-neutral records, the pipeline, task contracts, and
+  session lifecycle.
+- `io/` owns online serial and offline replay sources. Interactive UI workers
+  live here as compatibility adapters.
+- `protocol/` converts byte chunks into typed records. Protocol code performs
+  no file I/O and contains no experiment policy.
+- `storage/` preserves raw chunks, their host timestamps, events, tables, and
+  the manifest.
+- `tasks/` owns experiment/diagnostic behavior but not serial framing.
+- `analysis/` contains reusable numerical helpers, while `ui/` only displays.
+
+Simple tasks are one module. Promote a task to a package only after it becomes
+too large for one cohesive file.
 
 ## Environment
 
-Use 64-bit Python 3.12 on Windows AMD64 and macOS ARM64. Virtual environments
-are local artifacts and must not be copied between computers.
-
-macOS:
-
-```sh
-cd Python
-python3.12 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e ".[dev]" -c requirements.lock
-```
+Use 64-bit Python 3.12 on Windows AMD64 or macOS ARM64.
 
 Windows PowerShell:
 
@@ -27,87 +46,179 @@ py -3.12 -m venv .venv
 python -m pip install -e ".[dev]" -c requirements.lock
 ```
 
-## Commands
-
-The normal entry point reads `config.ini`:
+macOS:
 
 ```sh
-hopwins tasks
-hopwins run
-hopwins run --task raw_record --device follower
-hopwins run --task capture_inspect
-hopwins run --task replay
-```
-
-`--task` and `--device` override `[app]` for one invocation. The original
-direct commands remain useful for quick tests:
-
-```sh
-hopwins ports
-hopwins monitor --port /dev/cu.usbserial-0001
-hopwins record --port COM5 --output captures/session.hcir
-hopwins replay captures/session.hcir
+cd Python
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[dev]" -c requirements.lock
 ```
 
 ## Configuration
 
-`config.ini` is the portable, version-controlled configuration:
+Portable settings live in `config.toml`. Copy
+`config.local.toml.example` to `config.local.toml` for the current computer's
+COM port, ST-Link serial number, default task, or temporary duration. The local
+file is deeply merged over the shared file and is ignored by Git.
 
-- `[app]` selects the active task and named device.
-- `[device.follower]` and `[device.leader]` hold serial settings and the
-  expected MCU board/role identity.
-- `[task.<name>]` contains parameters owned by one registered task.
-- `[storage]` defines timestamped capture names.
+The updated MCU board names are used by default:
 
-An optional `config.local.ini` in the same directory is loaded after
-`config.ini`. Use it for the current `[app]` selection, machine-specific COM
-ports, or ST-Link serial numbers; it is ignored by Git.
-`config.local.ini.example` shows the supported overlay shape.
+- Follower: `UWB-RF1-SiT5156`, role `DO-Follower`
+- Leader: `UWB-RF1`, role `DO-Leader`
 
-With `port = auto`, the tool filters ports by VID, PID, optional description,
-and optional probe serial number. If two matching boards are connected, set a
-different `serial_number` for each named device or use explicit ports. This
-keeps the same configuration model portable across Windows AMD64 and macOS
-ARM64.
+Every session stores the fully merged configuration, all command-line
+parameter overrides, the Git commit, and whether the working tree was dirty in
+`manifest.json`.
 
-Live monitoring records by default. Each `.hcir` file has a `.hcir.json`
-sidecar containing the effective configuration, resolved serial connection,
-firmware profile, time range, and byte count. The binary `.hcir` stream remains
-the source record for every session.
+## Commands
 
-`capture_inspect` prints a limited number of captures in human-readable form,
-including RX status, adjusted `RX_STAMP`, FPI, peak indices, power diagnostics,
-and a small I/Q table around the FPI. Configure `path`, `limit`, `cir_radius`,
-and `frame_bytes` under `[task.capture_inspect]`.
+List the explicit registry:
 
-The HCIR v2 `rx_timestamp` is the DW3000 fully adjusted RX timestamp: the CIA
-first-path correction has been applied and `RXANTD` has been subtracted. New
-firmware also writes coarse `RX_RAWST` into the formerly reserved final five
-header bytes and sets `RAW_TIMESTAMP_VALID`; older captures remain readable
-and report the raw value as unavailable. `capture_inspect` calculates
-`signed40(RX_STAMP - RX_RAWST + RXANTD)` when both values are present.
-Separate `IP_TOA`/`STS_TOA` values are not recorded.
+```sh
+hopwins tasks
+hopwins tasks --category capture
+```
 
-## VS Code
+Record a live session until Ctrl+C:
 
-Open the repository root and select the interpreter inside `Python/.venv` once
-on each computer. The Run and Debug panel provides:
+```sh
+hopwins run session_capture --device follower --label cable-run-01
+```
 
-- `Python: Configured Task` runs `[app] task` from the same `config.ini` used
-  by the terminal.
-- `Python: Task Override` prompts for any registered task name without editing
-  the shared configuration.
-- `Python: Tests` runs the Python test suite.
+Record for a fixed duration and attach experiment notes:
 
-Use VS Code debugging while developing parsers, analysis, or UI code. Use
-`hopwins run` in a terminal for normal captures and unattended sessions; both
-paths execute the same task registry and configuration loader.
+```sh
+hopwins run session_capture --device follower --duration 600 \
+  --label corridor-los-5m --notes "static, RF1"
+```
 
-Each module under `src/hopwins/tasks` owns its task-specific configuration and
-exports `run_configured(context)`. Adding a task requires one module, one
-`TaskDefinition` entry in `tasks/registry.py`, and an optional matching
-`[task.<name>]` section. VS Code launch configurations do not need to change.
+Replay an existing session through the same decoder and task, without copying
+the raw stream into the derived session:
 
-`pyproject.toml` is the dependency source of truth. `requirements.lock` pins
-the tested package versions while pip selects the matching Windows AMD64 or
-macOS ARM64 wheel. Update both platforms together when refreshing the lock.
+```sh
+hopwins run session_capture --mode offline \
+  --input experiments/SESSION_NAME --label reprocess-v2
+```
+
+Task parameters can be overridden without editing shared configuration:
+
+```sh
+hopwins run session_capture --param protocol=hcir \
+  --param replay_speed=0
+```
+
+Existing utilities remain registered while they are migrated:
+
+```sh
+hopwins run cir_monitor --device follower
+hopwins run capture_inspect --mode offline
+hopwins run replay --mode offline
+hopwins ports
+```
+
+## STS dual-channel CIR monitor
+
+MCU commit `5058310` adds HCIR v3 for the
+`UWB-STS-Dual-RX-Diagnostic` workflow. One received UWB frame produces two
+complete records with the same capture ID: STS0 on RF1 and STS1 on RF2. Each
+record has its own CIR chunks and repeats the PDoA, TDoA, and STS ToA metadata.
+
+Connect Python to the diagnostic RX board and start live recording plus the
+dynamic monitor:
+
+```powershell
+hopwins diagnose dual_cir_monitor --device sts_dual_rx `
+  --label sts-bench-01 --notes "fixed TX/RX geometry"
+```
+
+The window shows both magnitudes with a shared dB reference, aligned to each
+channel's FPI, plus separate raw I/Q plots. Closing the window finalizes an
+experiment Session containing lossless `raw/serial.bin`, per-read timestamps,
+the effective configuration, firmware profile, and Git state. Disable recording
+only for a temporary display with `--param record=false`.
+
+Replay a recorded Session through the same pairing and visualization code:
+
+```powershell
+hopwins diagnose dual_cir_monitor --mode offline `
+  --input experiments/SESSION_NAME --param replay_speed=1
+```
+
+Generate tabular v3 metadata for later algorithms without opening the UI:
+
+```powershell
+hopwins run session_capture --mode offline `
+  --input experiments/SESSION_NAME --label metadata-pass
+```
+
+The resulting `captures.csv` has one row per channel and includes capture ID,
+CIR source, RF port, STS0/STS1 ToA, PDoA, TDoA, FPI, RSSI, and capture-window
+metadata. The complete I/Q arrays remain losslessly available in the raw HCIR
+stream so later algorithms can choose their own storage and preprocessing.
+
+## Session layout
+
+```text
+experiments/TIMESTAMP_TASK_DEVICE_LABEL/
+├── manifest.json
+├── raw/
+│   ├── serial.bin
+│   └── serial.index.jsonl
+├── records/
+│   ├── events.jsonl
+│   ├── do_track.csv
+│   └── captures.csv
+└── artifacts/
+```
+
+`serial.bin` is written before protocol decoding. `serial.index.jsonl` records
+the offset, length, host monotonic timestamp, UTC timestamp, and source for
+every read. This permits timing-aware offline replay and preserves malformed or
+unknown packets for future decoders.
+
+`do_track.csv` appears only when the firmware emits `DO TRACK` records.
+`captures.csv` appears only when complete HCIR captures are assembled. Large
+CIR I/Q arrays remain in the raw stream; future task modules may write NPZ or
+other files under `artifacts/` without changing the recorder.
+
+## Adding a protocol
+
+1. Add one decoder module under `protocol/`.
+2. Implement `feed(ByteChunk)`, `flush()`, and `statistics()`.
+3. Return typed `Record` instances.
+4. Register the decoder in `protocol.create_decoder()`.
+5. Add fragmented, corrupt, and version-compatibility tests.
+
+Shared framing belongs in protocol code. A task must never decode byte offsets
+or calculate a packet CRC itself.
+
+## Adding a task or diagnosis
+
+1. Add one module under `tasks/`; diagnostics may use `tasks/diagnostics/`.
+2. Implement `run_configured(context)` or use the shared `RecordTask` pipeline.
+3. Add one `TaskSpec` entry to `registry.py`.
+4. Add `[tasks.<name>]` defaults to `config.toml`.
+5. Add tests for the task's accepted record types and outputs.
+
+Diagnostics are ordinary tasks with category `diagnostic`; `main.py`, sources,
+protocols, and storage do not change when a new diagnosis is added.
+
+## Existing HCIR support
+
+HCIR v2/v3 parsing, CRC-32/BZIP2 validation, source-aware CIR chunk assembly,
+raw replay, CIR inspection, and the Qt monitors are supported. The mixed decoder also types
+the new `FW PROFILE`, `DO TRACK CFG`, and `DO TRACK` text records. A Follower
+using `SERIAL_CAPTURE_FORMAT_OFF` therefore produces DO tables without CIR;
+`SERIAL_CAPTURE_FORMAT_HCIR_V2` produces both DO and capture tables.
+
+## Tests
+
+```sh
+cd Python
+python -m pytest
+python -m ruff check src tests
+```
+
+Tests mirror the architecture: protocol parsing, storage/session behavior,
+task outputs, and existing CIR/UI behavior are verified separately.

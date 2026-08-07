@@ -42,27 +42,29 @@ class _PendingCapture:
 
 class CirCaptureAssembler:
     def __init__(self, maximum_pending: int = 8) -> None:
-        self._pending: OrderedDict[int, _PendingCapture] = OrderedDict()
+        self._pending: OrderedDict[
+            tuple[int, int | None], _PendingCapture
+        ] = OrderedDict()
         self._maximum_pending = maximum_pending
         self.statistics = AssemblerStatistics()
 
     def add(self, packet: HcirPacket) -> CirCapture | None:
-        capture_id = packet.header.capture_id
-        pending = self._pending.setdefault(capture_id, _PendingCapture())
+        key = _capture_key(packet.header)
+        pending = self._pending.setdefault(key, _PendingCapture())
         pending.first_header = pending.first_header or packet.header
-        self._pending.move_to_end(capture_id)
+        self._pending.move_to_end(key)
 
         if packet.header.packet_type is PacketType.RX_FRAME:
             pending.frame_packet = packet
             if packet.header.version >= 2 and not (
                 packet.header.flags & PacketFlags.CIR_VALID
             ):
-                return self._finish_without_cir(capture_id, pending)
+                return self._finish_without_cir(key, pending)
         elif packet.header.packet_type is PacketType.CIR_DATA:
             if not self._add_chunk(pending, packet):
                 return None
 
-        capture = self._try_finish(capture_id, pending)
+        capture = self._try_finish(key, pending)
         self._evict_old_captures()
         return capture
 
@@ -90,7 +92,7 @@ class CirCaptureAssembler:
 
     def _try_finish(
         self,
-        capture_id: int,
+        key: tuple[int, int | None],
         pending: _PendingCapture,
     ) -> CirCapture | None:
         if pending.frame_packet is None or pending.expected_chunks == 0:
@@ -123,7 +125,7 @@ class CirCaptureAssembler:
         if not all(coverage):
             return None
 
-        del self._pending[capture_id]
+        del self._pending[key]
         self.statistics.completed_captures += 1
         return CirCapture(
             header=header,
@@ -135,11 +137,11 @@ class CirCaptureAssembler:
 
     def _finish_without_cir(
         self,
-        capture_id: int,
+        key: tuple[int, int | None],
         pending: _PendingCapture,
     ) -> CirCapture:
         assert pending.frame_packet is not None
-        del self._pending[capture_id]
+        del self._pending[key]
         self.statistics.completed_captures += 1
         return CirCapture(
             header=pending.frame_packet.header,
@@ -153,3 +155,8 @@ class CirCaptureAssembler:
         while len(self._pending) > self._maximum_pending:
             self._pending.popitem(last=False)
             self.statistics.incomplete_captures += 1
+
+
+def _capture_key(header: HcirHeader) -> tuple[int, int | None]:
+    source = int(header.cir_source) if header.version >= 3 else None
+    return header.capture_id, source

@@ -1,0 +1,20 @@
+# Copy to config.local.toml for settings that belong only to this computer.
+
+[app]
+task = "session_capture"
+device = "follower"
+
+[devices.follower]
+port = "auto"
+serial_number = ""
+
+[devices.leader]
+port = "auto"
+serial_number = ""
+
+[devices.sts_dual_rx]
+port = "auto"
+serial_number = ""
+
+[tasks.session_capture]
+duration_s = 600
