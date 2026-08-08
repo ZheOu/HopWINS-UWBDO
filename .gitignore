@@ -27,6 +27,9 @@
 /Python/config.local.toml
 /Python/experiments/
 /Python/captures/
+/.pytest_cache/
+/debug.log
+/.ruff_cache/
 
 # FPGA Project: Lattice Radiant
 /FPGA/*
