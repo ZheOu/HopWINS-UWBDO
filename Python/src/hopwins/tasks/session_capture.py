@@ -8,6 +8,7 @@ from typing import cast
 
 from hopwins.capture.assembler import CirCapture
 from hopwins.core.pipeline import run_pipeline
+from hopwins.core.prompts import PromptField, TaskPromptSpec
 from hopwins.core.records import Record
 from hopwins.core.session import ExperimentSession
 from hopwins.core.task import TaskContext
@@ -18,6 +19,19 @@ from hopwins.protocol.common_text import FirmwareProfile
 from hopwins.protocol.do_text_v1 import DoTrackConfig, DoTrackRecord
 from hopwins.storage.reader import resolve_raw_stream
 from hopwins.storage.recorder import SessionRecorder
+
+PROMPT = TaskPromptSpec(
+    default_label="session-capture",
+    default_notes="Lossless serial capture retained for offline replay.",
+    fields=(
+        PromptField(
+            "duration_s",
+            "Recording duration in seconds (0 = until Ctrl+C)",
+            0.0,
+            "float",
+        ),
+    ),
+)
 
 DO_TRACK_FIELDS = (
     "host_utc_ns",
@@ -75,13 +89,21 @@ CAPTURE_FIELDS = (
 
 
 class SessionCaptureTask:
+    do_track_fields = DO_TRACK_FIELDS
+    capture_fields = CAPTURE_FIELDS
+
     def __init__(
         self,
         expected_board: str | None,
         expected_role: str | None,
+        *,
+        record_do_track: bool = True,
+        record_captures: bool = True,
     ) -> None:
         self.expected_board = expected_board
         self.expected_role = expected_role
+        self.record_do_track = record_do_track
+        self.record_captures = record_captures
         self.text_lines = 0
         self.do_records = 0
         self.captures = 0
@@ -115,14 +137,26 @@ class SessionCaptureTask:
             context.session.update(firmware_profile=asdict(profile))
             return
         if record.kind == "do.track.config":
+            if not self.record_do_track:
+                return
             config = cast(DoTrackConfig, record.payload)
             recorder.write_event("do.track.config", config=asdict(config))
             return
         if record.kind == "do.track":
-            self._write_do_track(cast(DoTrackRecord, record.payload), record, recorder)
+            if self.record_do_track:
+                self._write_do_track(
+                    cast(DoTrackRecord, record.payload),
+                    record,
+                    recorder,
+                )
             return
         if record.kind == "cir.capture":
-            self._write_capture(cast(CirCapture, record.payload), record, recorder)
+            if self.record_captures:
+                self._write_capture(
+                    cast(CirCapture, record.payload),
+                    record,
+                    recorder,
+                )
 
     def stop(self, context: TaskContext) -> dict[str, object]:
         if context.recorder is not None:

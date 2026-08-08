@@ -17,8 +17,16 @@ from hopwins.protocol.common_text import FirmwareProfile
 
 
 class SessionRecorder:
-    def __init__(self, session: ExperimentSession) -> None:
+    def __init__(
+        self,
+        session: ExperimentSession,
+        *,
+        flush_every_chunks: int = 32,
+    ) -> None:
+        if flush_every_chunks <= 0:
+            raise ValueError("flush_every_chunks must be positive")
         self.session = session
+        self.flush_every_chunks = flush_every_chunks
         self._raw: BinaryIO = (session.path / "raw" / "serial.bin").open("wb")
         self._index = (session.path / "raw" / "serial.index.jsonl").open(
             "w", encoding="utf-8", newline="\n"
@@ -50,6 +58,8 @@ class SessionRecorder:
             )
             + "\n"
         )
+        if self.chunks_written % self.flush_every_chunks == 0:
+            self.flush()
 
     def write_event(self, kind: str, **values: object) -> None:
         event = {
@@ -65,6 +75,13 @@ class SessionRecorder:
         fields: Sequence[str],
         row: Mapping[str, object],
     ) -> None:
+        self.ensure_table(name, fields)
+        writer = self._csv_writers[name]
+        normalized_fields = self._csv_fields[name]
+        writer.writerow({field: row.get(field) for field in normalized_fields})
+
+    def ensure_table(self, name: str, fields: Sequence[str]) -> None:
+        """Create a CSV and its header even when no data rows arrive."""
         normalized_fields = tuple(fields)
         writer = self._csv_writers.get(name)
         if writer is None:
@@ -77,17 +94,25 @@ class SessionRecorder:
             self._csv_fields[name] = normalized_fields
         elif self._csv_fields[name] != normalized_fields:
             raise ValueError(f"CSV schema changed during session: {name}")
-        writer.writerow({field: row.get(field) for field in normalized_fields})
 
     def close(self) -> None:
         if self._raw.closed:
             return
-        self._raw.flush()
+        self.flush()
         self._raw.close()
         self._index.close()
         self._events.close()
         for stream in self._csv_files.values():
             stream.close()
+
+    def flush(self) -> None:
+        if self._raw.closed:
+            return
+        self._raw.flush()
+        self._index.flush()
+        self._events.flush()
+        for stream in self._csv_files.values():
+            stream.flush()
 
 
 class SessionRawSink:

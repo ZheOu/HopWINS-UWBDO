@@ -44,6 +44,33 @@ class SessionRecorderTests(unittest.TestCase):
         self.assertIn("x,y", rows)
         self.assertIn("1,2", rows)
 
+    def test_chunk_threshold_flushes_raw_data_and_time_index(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "experiment"
+            session = ExperimentSession.create(
+                path,
+                task="session_capture",
+                category="capture",
+                mode="online",
+                protocol="hcir",
+                device="follower",
+                parameters={},
+                effective_config={},
+                label=None,
+                notes=None,
+                source="serial:COM5",
+            )
+            recorder = SessionRecorder(session, flush_every_chunks=2)
+            recorder.write_chunk(ByteChunk.now(b"abc", "serial:COM5"))
+            recorder.write_chunk(ByteChunk.now(b"def", "serial:COM5"))
+
+            raw = (path / "raw" / "serial.bin").read_bytes()
+            index_lines = (path / "raw" / "serial.index.jsonl").read_text().splitlines()
+            recorder.close()
+
+        self.assertEqual(raw, b"abcdef")
+        self.assertEqual(len(index_lines), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

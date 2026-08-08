@@ -95,6 +95,10 @@ class ProjectConfigTests(unittest.TestCase):
         self.assertTrue(dual.supports_online)
         self.assertTrue(dual.supports_offline)
         self.assertEqual(dual.protocol, "hcir_v3")
+        self.assertEqual(TASKS["do_leader_dataset"].category, "dataset")
+        self.assertEqual(TASKS["do_follower_dataset"].category, "dataset")
+        self.assertEqual(TASKS["sts_tx_dataset"].category, "dataset")
+        self.assertTrue(TASKS["do_follower_dataset"].supports_offline)
 
     def test_latest_capture_ignores_empty_derived_streams(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

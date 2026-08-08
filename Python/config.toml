@@ -38,12 +38,44 @@ description_contains = ""
 expected_board = "Full-SiT5156"
 expected_role = "UWB-STS-Dual-RX-Diagnostic"
 
+[devices.sts_tx]
+port = "auto"
+baudrate = 5000000
+timeout_s = 0.1
+vid = 0x0483
+pid = 0x3754
+serial_number = ""
+description_contains = ""
+expected_board = "UWB-RF1-SiT5156"
+expected_role = "UWB-STS-TX-Diagnostic"
+
 [storage]
 experiment_directory = "experiments"
 capture_directory = "captures"
 filename_template = "{timestamp}_{device}_{task}.hcir"
 
 [tasks.session_capture]
+protocol = "hcir"
+duration_s = 0
+path = "latest"
+replay_speed = 0
+copy_raw = false
+
+[tasks.do_leader_dataset]
+protocol = "hcir"
+duration_s = 0
+path = "latest"
+replay_speed = 0
+copy_raw = false
+
+[tasks.do_follower_dataset]
+protocol = "hcir"
+duration_s = 0
+path = "latest"
+replay_speed = 0
+copy_raw = false
+
+[tasks.sts_tx_dataset]
 protocol = "hcir"
 duration_s = 0
 path = "latest"
@@ -60,6 +92,15 @@ record = true
 path = "latest"
 replay_speed = 1.0
 refresh_hz = 30
+
+[tasks.dual_cir_dataset]
+protocol = "hcir_v3"
+duration_s = 0
+path = "latest"
+replay_speed = 0
+copy_raw = false
+flush_every_pairs = 10
+maximum_pending_pairs = 32
 
 [tasks.raw_record]
 output = ""

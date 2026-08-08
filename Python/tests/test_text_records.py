@@ -6,6 +6,7 @@ from hopwins.core.records import ByteChunk
 from hopwins.protocol.common_text import parse_firmware_profile
 from hopwins.protocol.do_text_v1 import parse_do_track, parse_do_track_config
 from hopwins.protocol.hcir_v2 import HcirV2Decoder
+from hopwins.protocol.service_text_v1 import parse_uwb_rx_health, parse_uwb_tx
 
 
 class TextRecordTests(unittest.TestCase):
@@ -18,6 +19,19 @@ class TextRecordTests(unittest.TestCase):
         self.assertIsNotNone(profile)
         assert profile is not None
         self.assertEqual(profile.board, "UWB-RF1-SiT5156")
+        self.assertTrue(profile.has_clock_control)
+
+    def test_current_firmware_profile_names_clock_and_rf_paths(self) -> None:
+        profile = parse_firmware_profile(
+            "FW PROFILE, BOARD=Full-SiT5156, "
+            "ROLE=UWB-STS-Dual-RX-Diagnostic, BUILD=Debug, FPGA=1, "
+            "CLOCK_DEVICE=SiT5156, EXT_TIMER=1, RF_PATHS=0x3"
+        )
+
+        self.assertIsNotNone(profile)
+        assert profile is not None
+        self.assertEqual(profile.clock_device, "SiT5156")
+        self.assertEqual(profile.rf_paths, 3)
         self.assertTrue(profile.has_clock_control)
 
     def test_do_tracking_config_and_update_are_typed(self) -> None:
@@ -50,6 +64,26 @@ class TextRecordTests(unittest.TestCase):
         records = decoder.feed(ByteChunk.now(line, "test"))
 
         self.assertEqual([record.kind for record in records], ["text.line", "do.track"])
+
+    def test_uwb_tx_and_rx_health_records_are_typed(self) -> None:
+        transmit = parse_uwb_tx(
+            "UWB TX OK, STATUS=0x00, SEQ=0x0000002A, LEN=0x0017, "
+            "SCHED=0x00123456, TX_TS=0x123456789A, LATE=0x00000001"
+        )
+        health = parse_uwb_rx_health(
+            "UWB RX HEALTH, ENABLE=1, PENDING=1, QUEUED=0x02, "
+            "RX=0x0000002A, ERR=0x00000001, CRC_ERR=0x00000000, "
+            "RECOVERY=0x00000002, WATCHDOG=0x00000003, QFULL=0x00000004, "
+            "UART_ERR=0x00000005"
+        )
+
+        self.assertIsNotNone(transmit)
+        self.assertIsNotNone(health)
+        assert transmit is not None and health is not None
+        self.assertEqual(transmit.sequence, 42)
+        self.assertEqual(transmit.transmit_timestamp, 0x123456789A)
+        self.assertEqual(health.received_count, 42)
+        self.assertEqual(health.queue_full_count, 4)
 
 
 if __name__ == "__main__":

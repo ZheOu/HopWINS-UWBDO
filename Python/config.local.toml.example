@@ -16,5 +16,9 @@ serial_number = ""
 port = "auto"
 serial_number = ""
 
+[devices.sts_tx]
+port = "auto"
+serial_number = ""
+
 [tasks.session_capture]
 duration_s = 600

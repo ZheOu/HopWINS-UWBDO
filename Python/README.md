@@ -20,7 +20,8 @@ Responsibilities are intentionally narrow:
 - `main.py` parses the command and dispatches a registered task.
 - `registry.py` is the explicit list of tasks and their categories/modes.
 - `core/` owns transport-neutral records, the pipeline, task contracts, and
-  session lifecycle.
+  session lifecycle. `core/prompts.py` resolves reusable task input
+  declarations without coupling task code to `input()` or `argparse`.
 - `io/` owns online serial and offline replay sources. Interactive UI workers
   live here as compatibility adapters.
 - `protocol/` converts byte chunks into typed records. Protocol code performs
@@ -93,6 +94,23 @@ hopwins run session_capture --device follower --duration 600 \
   --label corridor-los-5m --notes "static, RF1"
 ```
 
+Dataset tasks also declare a default label, a default note, and selected
+typed parameter prompts beside their own task code. Use `--prompt` to confirm
+them before opening the serial port; press Enter to keep the value in brackets:
+
+```powershell
+hopwins run do_follower_dataset --device follower --prompt
+# Dataset label [do-follower]: corridor-los-5m
+# Dataset note [DO-Follower clock tracking, RX health, and CIR dataset.]: 5 m LOS
+# Recording duration in seconds (0 = until Ctrl+C) [0]: 60
+```
+
+`--note` is a short alias for `--notes`. For unattended scripts, omit
+`--prompt` and pass any values directly. Explicit command-line values have the
+highest priority, task parameters from `config.toml` provide the next defaults,
+and the task's `PROMPT` declaration is the final fallback. The resolved label,
+note, and parameters are written to `manifest.json` in either mode.
+
 Replay an existing session through the same decoder and task, without copying
 the raw stream into the derived session:
 
@@ -116,6 +134,56 @@ hopwins run capture_inspect --mode offline
 hopwins run replay --mode offline
 hopwins ports
 ```
+
+## MCU workflow datasets
+
+Each runnable workflow under `MCU/Services` has one Python dataset entry. The
+task module owns only its tables; serial capture, host timestamps, offline
+replay, manifests, and raw storage stay shared.
+
+| MCU workflow | Python task | Structured outputs |
+|---|---|---|
+| `DO-Leader` | `do_leader_dataset` | `serial_text.csv`, `uwb_tx.csv` |
+| `DO-Follower` | `do_follower_dataset` | `serial_text.csv`, `uwb_rx_health.csv`, `do_track.csv`, optional `captures.csv` |
+| `UWB-STS-TX-Diagnostic` | `sts_tx_dataset` | `serial_text.csv`, `uwb_tx.csv` |
+| `UWB-STS-Dual-RX-Diagnostic` | `dual_cir_dataset` | `uwb_rx_health.csv`, `dual_cir_pairs.csv`, paired I/Q binary |
+
+Run a dataset directly from its matching board:
+
+```powershell
+hopwins run do_leader_dataset --device leader --duration 60 `
+  --label leader-bench-01
+hopwins run do_follower_dataset --device follower --duration 60 `
+  --label follower-track-01
+hopwins run sts_tx_dataset --device sts_tx --duration 60 `
+  --label sts-tx-01
+hopwins diagnose dual_cir_dataset --device sts_dual_rx --duration 60 `
+  --label sts-dual-rx-01
+```
+
+The same commands can be run with `--prompt`; every dataset task has useful
+label/note defaults, so quick captures no longer require repeated metadata
+arguments. Keep using explicit `--label`, `--note`, `--duration`, and `--param`
+values in automated runs.
+
+Every online task writes lossless `raw/serial.bin` plus
+`raw/serial.index.jsonl`. The index links every UART read to
+`host_utc_ns` and `host_monotonic_ns`; structured rows repeat the relevant
+host timestamps next to MCU/DW3000 timestamps. The recorder flushes raw,
+index, event, and CSV streams periodically so a forced stop loses only a
+small bounded tail.
+
+Reorganize a saved Session without touching a serial port:
+
+```powershell
+hopwins run do_follower_dataset --mode offline --device follower `
+  --input experiments/SESSION_NAME --label follower-reprocessed-v2
+```
+
+When multiple ST-Link boards are connected, put each board's serial number in
+`config.local.toml` under `[devices.leader]`, `[devices.follower]`,
+`[devices.sts_tx]`, or `[devices.sts_dual_rx]` so `port = "auto"` remains
+unambiguous.
 
 ## STS dual-channel CIR monitor
 
@@ -157,6 +225,38 @@ CIR source, RF port, STS0/STS1 ToA, PDoA, TDoA, FPI, RSSI, and capture-window
 metadata. The complete I/Q arrays remain losslessly available in the raw HCIR
 stream so later algorithms can choose their own storage and preprocessing.
 
+Create an algorithm-ready paired dataset directly from the RX board:
+
+```powershell
+hopwins diagnose dual_cir_dataset --device sts_dual_rx --duration 60 `
+  --label los-3m-01 --notes "static boards, 3 m LOS"
+```
+
+The dataset Session keeps the lossless UART stream and also writes
+`records/dual_cir_pairs.csv`, `artifacts/cir_iq_i32le.bin`, and
+`artifacts/dataset.json`. Each CSV row is one UWB reception, links STS0 and
+STS1 by capture ID, records both array offsets, FPI/RF/quality metadata, and
+includes the experiment label. The binary file stores contiguous little-endian
+`int32` rows in `[I, Q]` order without losing the original signed I24 values.
+
+The same dataset can be derived later from an existing raw Session:
+
+```powershell
+hopwins diagnose dual_cir_dataset --mode offline `
+  --input experiments/SESSION_NAME --label reprocessed-v1
+```
+
+Load one pair in an algorithm without parsing UART packets again:
+
+```python
+from hopwins.storage.dataset import DualCirDatasetReader
+
+dataset = DualCirDatasetReader("experiments/SESSION_NAME")
+pair = dataset.read_pair(0)
+sts0_iq = pair.sts0  # shape: [samples, 2], columns: I and Q
+sts1_iq = pair.sts1
+```
+
 ## Session layout
 
 ```text
@@ -168,8 +268,11 @@ experiments/TIMESTAMP_TASK_DEVICE_LABEL/
 ├── records/
 │   ├── events.jsonl
 │   ├── do_track.csv
-│   └── captures.csv
+│   ├── captures.csv
+│   └── dual_cir_pairs.csv
 └── artifacts/
+    ├── dataset.json
+    └── cir_iq_i32le.bin
 ```
 
 `serial.bin` is written before protocol decoding. `serial.index.jsonl` records
@@ -199,7 +302,24 @@ or calculate a packet CRC itself.
 2. Implement `run_configured(context)` or use the shared `RecordTask` pipeline.
 3. Add one `TaskSpec` entry to `registry.py`.
 4. Add `[tasks.<name>]` defaults to `config.toml`.
-5. Add tests for the task's accepted record types and outputs.
+5. If the task creates a dataset, add a small `PROMPT = TaskPromptSpec(...)`
+   declaration for its default label, note, and user-facing typed parameters.
+6. Add tests for the task's accepted record types and outputs.
+
+For example, a new task can opt into the shared prompt behavior without adding
+any CLI code:
+
+```python
+from hopwins.core.prompts import PromptField, TaskPromptSpec
+
+PROMPT = TaskPromptSpec(
+    default_label="new-task",
+    default_notes="Default experiment note.",
+    fields=(
+        PromptField("duration_s", "Recording duration (s)", 0.0, "float"),
+    ),
+)
+```
 
 Diagnostics are ordinary tasks with category `diagnostic`; `main.py`, sources,
 protocols, and storage do not change when a new diagnosis is added.

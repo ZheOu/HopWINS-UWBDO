@@ -13,6 +13,8 @@ class FirmwareProfile:
     has_fpga: bool
     has_clock_control: bool
     has_external_timer: bool
+    clock_device: str = "UNKNOWN"
+    rf_paths: int = 0
 
     @property
     def supports_cir(self) -> bool:
@@ -33,14 +35,26 @@ def parse_firmware_profile(line: str) -> FirmwareProfile | None:
     if not line.startswith("FW PROFILE,"):
         return None
     fields = parse_fields(line)
-    required = {"BOARD", "ROLE", "BUILD", "FPGA", "CLOCK", "EXT_TIMER"}
+    required = {"BOARD", "ROLE", "BUILD", "FPGA", "EXT_TIMER"}
     if not required.issubset(fields):
+        return None
+    clock_device = fields.get("CLOCK_DEVICE")
+    legacy_clock = fields.get("CLOCK")
+    if clock_device is None and legacy_clock is None:
+        return None
+    if clock_device is None:
+        clock_device = "GENERIC" if legacy_clock == "1" else "NONE"
+    try:
+        rf_paths = int(fields.get("RF_PATHS", "0"), 0)
+    except ValueError:
         return None
     return FirmwareProfile(
         board=fields["BOARD"],
         role=fields["ROLE"],
         build=fields["BUILD"],
         has_fpga=fields["FPGA"] == "1",
-        has_clock_control=fields["CLOCK"] == "1",
+        has_clock_control=clock_device != "NONE",
         has_external_timer=fields["EXT_TIMER"] == "1",
+        clock_device=clock_device,
+        rf_paths=rf_paths,
     )

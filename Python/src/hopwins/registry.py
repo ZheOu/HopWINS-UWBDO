@@ -6,6 +6,7 @@ import importlib
 from pathlib import Path
 
 from hopwins.config import ProjectConfig
+from hopwins.core.prompts import TaskPromptSpec, resolve_task_inputs
 from hopwins.core.task import TaskContext, TaskSpec
 
 TASKS: dict[str, TaskSpec] = {
@@ -16,6 +17,33 @@ TASKS: dict[str, TaskSpec] = {
             "capture",
             "record a reproducible online or offline experiment session",
             "hopwins.tasks.session_capture",
+            requires_device=True,
+            supports_offline=True,
+            protocol="hcir",
+        ),
+        TaskSpec(
+            "do_leader_dataset",
+            "dataset",
+            "organize DO-Leader TX and service records into timestamped tables",
+            "hopwins.tasks.do_leader_dataset",
+            requires_device=True,
+            supports_offline=True,
+            protocol="hcir",
+        ),
+        TaskSpec(
+            "do_follower_dataset",
+            "dataset",
+            "organize DO tracking, RX health, and optional CIR captures",
+            "hopwins.tasks.do_follower_dataset",
+            requires_device=True,
+            supports_offline=True,
+            protocol="hcir",
+        ),
+        TaskSpec(
+            "sts_tx_dataset",
+            "dataset",
+            "organize STS diagnostic TX events into a timestamped dataset",
+            "hopwins.tasks.sts_tx_dataset",
             requires_device=True,
             supports_offline=True,
             protocol="hcir",
@@ -33,6 +61,15 @@ TASKS: dict[str, TaskSpec] = {
             "diagnostic",
             "record or replay dynamic HCIR v3 STS0/STS1 CIR pairs",
             "hopwins.tasks.dual_cir_monitor",
+            requires_device=True,
+            supports_offline=True,
+            protocol="hcir_v3",
+        ),
+        TaskSpec(
+            "dual_cir_dataset",
+            "diagnostic",
+            "record algorithm-ready HCIR v3 STS0/STS1 paired CIR data",
+            "hopwins.tasks.dual_cir_dataset",
             requires_device=True,
             supports_offline=True,
             protocol="hcir_v3",
@@ -97,6 +134,22 @@ def run_task(
     if spec.requires_device and mode == "online" and not selected_device:
         raise ValueError(f"task {selected_name!r} requires a configured device")
 
+    overrides = dict(parameter_overrides or {})
+    module = importlib.import_module(spec.module)
+    prompt = _module_prompt(spec, module)
+    if prompt is not None:
+        resolved = resolve_task_inputs(
+            prompt,
+            label=label,
+            notes=notes,
+            effective_parameters=config.task_parameters(selected_name, overrides),
+            parameter_overrides=overrides,
+            interactive=False,
+        )
+        label = resolved.label
+        notes = resolved.notes
+        overrides = resolved.parameter_overrides
+
     context = TaskContext(
         config=config,
         spec=spec,
@@ -105,9 +158,8 @@ def run_task(
         input_path=input_path,
         label=label,
         notes=notes,
-        parameter_overrides=dict(parameter_overrides or {}),
+        parameter_overrides=overrides,
     )
-    module = importlib.import_module(spec.module)
     runner = getattr(module, "run_configured", None)
     if not callable(runner):
         raise RuntimeError(f"task module {spec.module} has no run_configured()")
@@ -119,3 +171,21 @@ def task_definitions(category: str | None = None) -> tuple[TaskSpec, ...]:
     if category is None:
         return values
     return tuple(spec for spec in values if spec.category == category)
+
+
+def task_prompt_spec(task_name: str) -> TaskPromptSpec | None:
+    """Load the optional prompt declaration kept beside a task's code."""
+
+    spec = TASKS.get(task_name)
+    if spec is None:
+        choices = ", ".join(TASKS)
+        raise ValueError(f"unknown task {task_name!r}; available: {choices}")
+    module = importlib.import_module(spec.module)
+    return _module_prompt(spec, module)
+
+
+def _module_prompt(spec: TaskSpec, module: object) -> TaskPromptSpec | None:
+    prompt = getattr(module, "PROMPT", None)
+    if prompt is not None and not isinstance(prompt, TaskPromptSpec):
+        raise RuntimeError(f"task module {spec.module} has an invalid PROMPT")
+    return prompt

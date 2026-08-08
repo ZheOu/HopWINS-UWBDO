@@ -7,7 +7,8 @@ import sys
 from collections.abc import Sequence
 
 from hopwins.config import ConfigurationError, ProjectConfig
-from hopwins.registry import TASKS, run_task, task_definitions
+from hopwins.core.prompts import resolve_task_inputs
+from hopwins.registry import TASKS, run_task, task_definitions, task_prompt_spec
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -53,21 +54,39 @@ def main(arguments: Sequence[str] | None = None) -> int:
 
     try:
         config = ProjectConfig.load(args.config)
-        task_name = args.task
+        task_name = args.task or config.task_name
         if args.command == "diagnose":
             task_name = _diagnostic_name(args.task)
         input_path = config.resolve_path(args.input) if args.input else None
         overrides = _parse_overrides(args.parameter)
         if args.duration is not None:
             overrides["duration_s"] = args.duration
+        prompt_spec = task_prompt_spec(task_name)
+        if args.prompt and prompt_spec is None:
+            raise ValueError(f"task {task_name!r} does not declare interactive prompts")
+        if args.prompt and prompt_spec is not None:
+            resolved = resolve_task_inputs(
+                prompt_spec,
+                label=args.label,
+                notes=args.notes,
+                effective_parameters=config.task_parameters(task_name, overrides),
+                parameter_overrides=overrides,
+                interactive=args.prompt,
+            )
+            label = resolved.label
+            notes = resolved.notes
+            overrides = resolved.parameter_overrides
+        else:
+            label = args.label
+            notes = args.notes
         return run_task(
             config,
             task_name=task_name,
             device_name=args.device,
             mode=args.mode,
             input_path=input_path,
-            label=args.label,
-            notes=args.notes,
+            label=label,
+            notes=notes,
             parameter_overrides=overrides,
         )
     except (ConfigurationError, OSError, RuntimeError, ValueError) as exc:
@@ -81,8 +100,13 @@ def _add_runtime_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--mode", choices=("online", "offline"), default="online")
     parser.add_argument("--input")
     parser.add_argument("--label")
-    parser.add_argument("--notes")
+    parser.add_argument("--notes", "--note", dest="notes")
     parser.add_argument("--duration", type=float)
+    parser.add_argument(
+        "--prompt",
+        action="store_true",
+        help="interactively confirm task metadata and selected parameters",
+    )
     parser.add_argument(
         "--param",
         dest="parameter",

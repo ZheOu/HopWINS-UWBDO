@@ -14,6 +14,12 @@ from hopwins.protocol.do_text_v1 import (
     parse_do_track_config,
 )
 from hopwins.protocol.packets import HcirPacket
+from hopwins.protocol.service_text_v1 import (
+    UwbRxHealthRecord,
+    UwbTxRecord,
+    parse_uwb_rx_health,
+    parse_uwb_tx,
+)
 from hopwins.protocol.stream_parser import HcirStreamParser, TextLine
 
 
@@ -60,6 +66,8 @@ class HcirDecoder:
                 parse_firmware_profile(event.text)
                 or parse_do_track_config(event.text)
                 or parse_do_track(event.text)
+                or parse_uwb_tx(event.text)
+                or parse_uwb_rx_health(event.text)
             )
             if parsed is not None:
                 self._special_text_records += 1
@@ -69,6 +77,10 @@ class HcirDecoder:
                     kind, schema = "do.track.config", "do_text.v1"
                 elif isinstance(parsed, DoTrackRecord):
                     kind, schema = "do.track", "do_text.v1"
+                elif isinstance(parsed, UwbTxRecord):
+                    kind, schema = "uwb.tx", "service_text.v1"
+                elif isinstance(parsed, UwbRxHealthRecord):
+                    kind, schema = "uwb.rx_health", "service_text.v1"
                 else:  # pragma: no cover - guards future parser additions
                     raise TypeError(f"unsupported text record: {type(parsed).__name__}")
                 records.append(Record(kind, schema, parsed, **common))
