@@ -67,9 +67,9 @@ accumulators before re-enabling reception. It does not configure the FPGA or
 run clock discipline. The workflow dispatcher applies this fixed diagnostic
 radio profile so ordinary Leader/Follower profiles remain unchanged.
 
-## PC UART transport
+## PC serial transport
 
-USART1 runs at 5 Mbps with its hardware FIFO enabled and GPDMA1 Channel 0
+The PC serial transport runs at 5 Mbps with its hardware FIFO enabled and DMA
 draining a 16 KiB board-owned TX ring. `board_pc_transmit()` copies into this
 queue and returns immediately; `BOARD_BUSY` reports backpressure when capacity
 is unavailable. This makes stack-backed Console messages safe and provides the
@@ -89,7 +89,7 @@ The FPGA path follows the same ownership model as the clock drivers.
 sequence through platform callbacks. `Devices/FPGA/fpga_image.c` owns
 linker-symbol access, while `Devices/FPGA/fpga_service.c` owns retained state
 and diagnostics. The
-Board implementation owns the shared SPI1 details, HAL-sized transfer chunks,
+Board implementation owns the shared serial-bus details, HAL-sized transfer chunks,
 CRESET_B/CDONE pins, and the PCB's separate `FPGA_EN` user-logic signal. The
 Follower keeps `FPGA_EN` low until configuration succeeds, then enables the
 current RTL explicitly.
@@ -104,7 +104,7 @@ The `APP_WORKFLOW_DO_FOLLOWER` workflow continuously receives UWB frames. CIR
 capture is enabled when either the selected timestamp estimator or serial
 capture format requires it.
 After a CRC-correct frame, `uwb_service.c` records MCU SysTick, the external
-TIM2 reference counter, the DW3000 RX and system timestamps, RF port,
+Board reference counter, the DW3000 RX and system timestamps, RF port,
 `SYS_STATUS`, `RX_FINFO`, CIA status registers, carrier/clock offsets, Ipatov
 diagnostics, and the accumulator before re-enabling RX. RF path selection comes
 from `HOPWINS_UWB_RF_MODE`. A valid frame is still exported
@@ -141,7 +141,7 @@ watchdog restarts RX, and three consecutive watchdog restarts request a full
 UWB reinitialization. `UWB RX HEALTH` reports receive, CRC-error, recovery,
 watchdog, queue-full, and UART-DMA error counters every five seconds.
 
-UART DMA has an independent 100 ms progress timeout. A timed-out transfer is
+PC serial DMA has an independent 100 ms progress timeout. A timed-out transfer is
 aborted and retried from its ring-buffer tail. The host HCIR parser discards
 any partial duplicate prefix by length and CRC before resynchronizing at the
 next valid magic.
@@ -151,7 +151,7 @@ next valid magic.
 Physical population and workflow are selected in `Src/main.c`:
 
 ```c
-#define HOPWINS_BOARD_VARIANT  BOARD_VARIANT_UWB_RF1_SIT5156
+#define HOPWINS_BOARD_VARIANT  BOARD_VARIANT_FPGA_NONE_CLK_DCTCXO_SIT5156_UWB_DW3000_DUAL_RF1
 #define HOPWINS_APP_WORKFLOW   APP_WORKFLOW_DO_FOLLOWER
 #define HOPWINS_UWB_RF_MODE    DW3000_RF_MODE_MANUAL_1
 #define HOPWINS_UWB_PDOA_MODE  DW3000_PDOA_MODE_DISABLED
@@ -160,16 +160,20 @@ Physical population and workflow are selected in `Src/main.c`:
 #define HOPWINS_FOLLOWER_CAPTURE_FORMAT SERIAL_CAPTURE_FORMAT_OFF
 ```
 
-`board_init()` loads one exact BOM variant. The description contains only
-physical facts: fitted clock device, available RF paths, FPGA population, and
-the TIM2 reference connection. The oscillator no longer has a separate setting
-that can conflict with the Board variant.
+`board_init()` loads one exact BOM variant. The description is composed from
+separate UWB, FPGA, and clock population records. The UWB record distinguishes
+the selected DW3000-family RF capability from the RF paths actually fitted on
+the PCB; the clock record separately declares the reference-counter connection.
+The oscillator therefore has no second setting that can conflict with the
+Board variant.
 
 RF selection is application policy. The workflow copies the default UWB
-profile, applies `HOPWINS_UWB_RF_MODE`, and verifies that the selected Board has
-all required paths. Manual modes need one path and disabled PDoA; `AUTO_1_2`
-and `AUTO_2_1` need both paths plus PDoA mode 1 or 3. The Follower skips FPGA
-initialization when the Board description reports that the FPGA is absent.
+profile, applies `HOPWINS_UWB_RF_MODE`, and asks the Board to verify both the
+selected UWB device's RF capability and every required fitted path. Manual
+modes need one path and disabled PDoA; `AUTO_1_2` and `AUTO_2_1` need both
+paths plus PDoA mode 1 or 3. An incompatible request emits `BOARD ERROR` with
+the required and fitted RF masks. The Follower skips FPGA initialization when
+the Board description reports that the iCE40UP5K is absent.
 CMake only selects Debug or Release; both builds contain all workflows,
 device drivers, and the FPGA image.
 
@@ -187,7 +191,7 @@ For a SiT5156 Board variant, the clock service addresses the fitted
 software output enable, so boot restores the 26-bit pull word to zero, writes
 `0x01[10]=1`, and reads registers `0x00` through `0x02` back. It then waits the
 datasheet's 45 ms maximum time to rated stability and confirms that the
-38.4 MHz path advances TIM2 through its 38399 prescaler. `CLOCK INIT OK`
+38.4 MHz path advances the Board reference counter. `CLOCK INIT OK`
 therefore means both I2C control and a physical output clock were observed.
 
 The current PCB schematic shows a 10 kOhm pull-up on SDA but no matching
@@ -210,7 +214,8 @@ The Leader sends DW3000 delayed transmissions at 100 ms intervals. Select its
 physical Board variant independently from `APP_WORKFLOW_DO_LEADER`; select the
 connected RF cable with `HOPWINS_UWB_RF_MODE`.
 
-The current Follower experiment selects `BOARD_VARIANT_UWB_RF1_SIT5156`,
+The current Follower experiment selects
+`BOARD_VARIANT_FPGA_NONE_CLK_DCTCXO_SIT5156_UWB_DW3000_DUAL_RF1`,
 `DW3000_RF_MODE_MANUAL_1`, and `APP_WORKFLOW_DO_FOLLOWER`. This uses RF1 and
 the SiT5156 while skipping FPGA configuration. `HOPWINS_DO_CLOCK_TRACKING=true`
 enables the timestamp-slope loop, while

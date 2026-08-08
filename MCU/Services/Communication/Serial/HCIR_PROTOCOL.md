@@ -1,6 +1,6 @@
-# HCIR UART Protocol
+# HCIR Serial Protocol
 
-USART1 carries startup/status text followed by self-synchronizing binary
+The PC serial transport carries startup/status text followed by self-synchronizing binary
 packets. Every binary packet starts with `HCIR`, uses little-endian integer
 fields, and ends with a CRC over the complete header and payload.
 
@@ -41,10 +41,10 @@ rather than a hard-coded payload offset.
 | 56 | 2 | Signed RSSI in Q8.8 dBm |
 | 58 | 2 | Signed first-path power in Q8.8 dBm |
 | 60 | 1 | RF port associated with the exported CIR when known |
-| 61 | 1 | Reference time source: 0 unavailable, 1 external TIM2 in ms |
+| 61 | 1 | Reference time source: 0 unavailable, 1 Board reference counter in ms |
 | 62 | 2 | RX antenna delay |
 | 64 | 4 | MCU SysTick observation time in ms |
-| 68 | 4 | External TIM2 reference time in ms |
+| 68 | 4 | Board reference-counter time in ms |
 | 72 | 4 | DW3000 system time high 32 bits at host readout |
 | 76 | 4 | `SYS_STATUS_HI` |
 | 80 | 4 | `RX_FINFO` |
@@ -104,7 +104,7 @@ remains independently inspectable.
 | 3 | `0x0008` | CIA diagnostic fields are valid |
 | 4 | `0x0010` | CIR samples are valid |
 | 5 | `0x0020` | Register snapshot is valid |
-| 6 | `0x0040` | External TIM2 timestamp is valid |
+| 6 | `0x0040` | Board reference-counter timestamp is valid |
 | 7 | `0x0080` | Coarse `RX_RAWST` is valid |
 | 8 | `0x0100` | V3 PDoA/ToA extension is valid |
 
@@ -162,28 +162,28 @@ for the complete packet, and accepts the boundary only after CRC validation.
 
 ## Throughput
 
-At 5 Mbps, 8-N-1 UART transports at most 500,000 bytes per second. The default
+At 5 Mbps, 8-N-1 serial transport carries at most 500,000 bytes per second. The default
 PRF64 Ipatov accumulator has 1016 samples. Full 48-bit I/Q uses 6 bytes per
 sample and 13 CIR packets. With a typical 23-byte received frame, one v2
-capture occupies 7,967 UART bytes and takes about 15.93 ms on the wire.
+capture occupies 7,967 serial bytes and takes about 15.93 ms on the wire.
 
-| CIR samples | UART bytes per capture | Wire time | Ideal capture rate |
+| CIR samples | Serial bytes per capture | Wire time | Ideal capture rate |
 |---:|---:|---:|---:|
 | 1016 | 7,967 | 15.93 ms | 62/s |
 | 512 | 4,151 | 8.30 ms | 120/s |
 | 256 | 2,219 | 4.44 ms | 225/s |
 | 128 | 1,187 | 2.37 ms | 421/s |
 
-These are UART-only upper bounds. SPI accumulator reads, host scheduling,
+These are serial-transport upper bounds. SPI accumulator reads, host scheduling,
 rendering, and other console messages reduce the practical rate. The host
 recorder writes raw bytes before plotting so display refresh does not determine
 data retention. The static timing experiment uses a 100 ms TX period (10 Hz).
 Full 1016-sample captures therefore consume about 79,670 bytes/s, or 15.9% of
-the ideal 5 Mbps UART payload capacity. The four RX capture slots and 16 KiB
-UART DMA ring provide additional burst tolerance; monitor `QFULL` and
+the ideal 5 Mbps serial payload capacity. The four RX capture slots and 16 KiB
+PC serial DMA ring provide additional burst tolerance; monitor `QFULL` and
 `UART_ERR` during hardware runs to detect practical overload.
 
 The Mode-3 diagnostic exports two 512-sample HCIR v3 records per received UWB
-frame. With a typical 23-byte frame this is approximately 9,070 UART bytes,
+frame. With a typical 23-byte frame this is approximately 9,070 serial bytes,
 18.1 ms at 5 Mbps, or 90.7 kB/s at the 100 ms TX interval. Four MCU capture
-slots hold two complete antenna pairs while the UART DMA queue drains.
+slots hold two complete antenna pairs while the PC serial DMA queue drains.

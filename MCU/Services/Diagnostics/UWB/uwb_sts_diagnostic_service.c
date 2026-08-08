@@ -113,7 +113,7 @@ static bool start_clock(void)
   if (board == NULL) {
     return false;
   }
-  if (board->clock_device == BOARD_CLOCK_DEVICE_NONE) {
+  if (board->clock.device == BOARD_CLOCK_DEVICE_NONE) {
     console_service_write("STS DIAG: using fixed board UWB clock\r\n");
     return true;
   }

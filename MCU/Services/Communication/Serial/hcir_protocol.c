@@ -28,7 +28,7 @@
 #define CIR_PROTOCOL_FLAG_PDOA_DIAG      UINT16_C(0x0100)
 
 #define CIR_PROTOCOL_FORMAT_I24_Q24_LE   1U
-#define CIR_PROTOCOL_REFERENCE_TIM2_MS   1U
+#define CIR_PROTOCOL_REFERENCE_COUNTER_MS   1U
 
 static uint8_t s_packet[CIR_PROTOCOL_MAX_PACKET_LEN];
 
@@ -189,7 +189,7 @@ static board_status_t send_packet(
       (uint16_t)capture->diagnostic.first_path_power_q8_8);
   s_packet[60] = (uint8_t)capture->rf_port;
   s_packet[61] = capture->reference_time_valid
-                     ? CIR_PROTOCOL_REFERENCE_TIM2_MS
+                     ? CIR_PROTOCOL_REFERENCE_COUNTER_MS
                      : 0U;
   write_u16_le(&s_packet[62], capture->rx_antenna_delay);
   write_u32_le(&s_packet[64], capture->mcu_system_time_ms);

@@ -214,7 +214,7 @@ static bool start_clock(void)
         uwb_timestamp_estimator_get_state(),
         s_config.follower_capture_format);
     if (clock_service_get_state()->clock_device ==
-        BOARD_CLOCK_DEVICE_SIT5156) {
+        BOARD_CLOCK_DEVICE_DCTCXO_SIT5156) {
       console_service_write(
           "CLOCK: register readback and physical output verified\r\n");
     } else {
@@ -234,7 +234,7 @@ static bool start_clock(void)
       break;
     case CLOCK_SERVICE_STATUS_VERIFY_FAILED:
       console_service_write(
-          "CLOCK: control readback or TIM2 ETR clock detection failed\r\n");
+          "CLOCK: control readback or reference-counter detection failed\r\n");
       break;
     default:
       console_service_write("CLOCK: initialization failed\r\n");
@@ -248,7 +248,8 @@ static void start_fpga(void)
   const board_description_t *board = board_get_description();
   ice40up5k_status_t status;
 
-  if ((board == NULL) || !board->fpga_fitted) {
+  if ((board == NULL) ||
+      (board->fpga.device != BOARD_FPGA_DEVICE_ICE40UP5K)) {
     console_service_write(
         "FPGA: not fitted, skipping configuration\r\n");
     return;

@@ -5,18 +5,29 @@ application workflow are selected together in the `USER CODE BEGIN PD` block
 of `Src/main.c`:
 
 ```c
-#define HOPWINS_BOARD_VARIANT  BOARD_VARIANT_UWB_RF1_SIT5156
+#define HOPWINS_BOARD_VARIANT  BOARD_VARIANT_FPGA_NONE_CLK_DCTCXO_SIT5156_UWB_DW3000_DUAL_RF1
 #define HOPWINS_APP_WORKFLOW   APP_WORKFLOW_DO_FOLLOWER
 #define HOPWINS_UWB_RF_MODE    DW3000_RF_MODE_MANUAL_1
 #define HOPWINS_UWB_PDOA_MODE  DW3000_PDOA_MODE_DISABLED
 ```
 
-Each Board variant is one real BOM population: `BOARD_VARIANT_UWB_RF1`,
-`BOARD_VARIANT_UWB_RF1_SIT5156`, `BOARD_VARIANT_FULL_SIT5156`, or
-`BOARD_VARIANT_FULL_SIT3907`. The oscillator is part of that physical variant,
-so it cannot conflict with a second runtime setting. The Follower workflow
-requires a clock device and the TIM2 counter; FPGA configuration is performed
-only when the selected variant declares an FPGA fitted.
+Each Board variant is one real BOM population. Its deliberately long name
+states the fitted FPGA, clock technology and part, DW3000 RF capability, and
+routed RF paths: `BOARD_VARIANT_FPGA_NONE_CLK_NONE_UWB_DW3000_DUAL_RF1`,
+`BOARD_VARIANT_FPGA_NONE_CLK_DCTCXO_SIT5156_UWB_DW3000_DUAL_RF1`,
+`BOARD_VARIANT_FPGA_ICE40UP5K_CLK_DCTCXO_SIT5156_UWB_DW3000_DUAL_RF1_RF2`,
+or `BOARD_VARIANT_FPGA_ICE40UP5K_CLK_DCO_SIT3907_UWB_DW3000_DUAL_RF1_RF2`.
+`BOARD_VARIANT_COUNT` is only an internal table-size sentinel, not a selectable
+population. The oscillator is part of the physical variant, so it cannot
+conflict with a second runtime setting. The Follower workflow requires a clock
+device and the reference counter; FPGA configuration is performed only when the
+selected variant fits an iCE40UP5K.
+
+The Board description keeps UWB device capability and fitted RF paths separate.
+The current DW3220 population is described as `DW3000_DUAL_RF`, while a future
+single-RF DW3000-family population can use `DW3000_SINGLE_RF`. Startup rejects
+a radio policy that asks for an unsupported device path or an unpopulated board
+path and emits a `BOARD ERROR` record with the required and fitted masks.
 
 The RF mode is application policy. Manual modes require the corresponding RF
 path and disabled PDoA. `DW3000_RF_MODE_AUTO_1_2` and `AUTO_2_1` require both
@@ -31,11 +42,11 @@ The STS/PDoA bench diagnostic is selected with one of these pairs:
 
 ```c
 /* Single-RF TX board. */
-#define HOPWINS_BOARD_VARIANT  BOARD_VARIANT_UWB_RF1_SIT5156
+#define HOPWINS_BOARD_VARIANT  BOARD_VARIANT_FPGA_NONE_CLK_DCTCXO_SIT5156_UWB_DW3000_DUAL_RF1
 #define HOPWINS_APP_WORKFLOW   APP_WORKFLOW_UWB_STS_TX_DIAGNOSTIC
 
 /* Dual-RF RX board; this is the current checked-in selection. */
-#define HOPWINS_BOARD_VARIANT  BOARD_VARIANT_FULL_SIT5156
+#define HOPWINS_BOARD_VARIANT  BOARD_VARIANT_FPGA_ICE40UP5K_CLK_DCTCXO_SIT5156_UWB_DW3000_DUAL_RF1_RF2
 #define HOPWINS_APP_WORKFLOW   APP_WORKFLOW_UWB_STS_DUAL_RX_DIAGNOSTIC
 ```
 

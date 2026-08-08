@@ -75,13 +75,15 @@ typedef struct {
   board_gpio_t clkdp;
 } board_clock_t;
 
+/* MCU peripheral wiring is fixed for this PCB revision. It is separate from
+ * s_variants, which describes which optional components are actually fitted. */
 typedef struct {
   board_uwb_t uwb;
   board_fpga_t fpga;
   board_clock_t clock;
   board_uart_device_t pc_uart;
   board_timer_device_t external_clock_timer;
-} board_components_t;
+} board_peripheral_map_t;
 
 static int32_t board_uwb_hardware_reset(void);
 static int32_t board_uwb_spi_set_slow_rate(void);
@@ -126,10 +128,15 @@ static board_status_t board_i2c_mem_read_7bit(
     uint16_t mem_addr_size,
     uint8_t *data,
     size_t len);
-static board_status_t board_external_clock_counter_start(void);
+static board_status_t board_reference_counter_start(void);
 static board_status_t board_pc_tx_start(void);
 static uint32_t board_pc_tx_used(uint32_t head, uint32_t tail);
 static bool board_pc_tx_busy(void);
+static bool board_description_is_valid(
+    const board_description_t *description);
+static bool board_rf_path_mask_is_valid(board_rf_path_mask_t paths);
+static board_rf_path_mask_t board_uwb_device_supported_rf_paths(
+    board_uwb_device_t device);
 
 static uint8_t s_pc_tx_buffer[BOARD_PC_TX_BUFFER_SIZE]
     __attribute__((aligned(32)));
@@ -139,46 +146,83 @@ static volatile uint32_t s_pc_tx_in_flight;
 static volatile uint32_t s_pc_tx_started_ms;
 static volatile uint32_t s_pc_tx_errors;
 static volatile bool s_pc_tx_dma_active;
-static bool s_external_clock_counter_running;
+static bool s_reference_counter_running;
 
 static const board_description_t s_variants[BOARD_VARIANT_COUNT] = {
-  [BOARD_VARIANT_UWB_RF1] = {
-    .name = "UWB-RF1",
-    .clock_device = BOARD_CLOCK_DEVICE_NONE,
-    .available_rf_paths = BOARD_RF_PATH_1,
-    .fpga_fitted = false,
-    .external_clock_counter_connected = false,
+  [BOARD_VARIANT_FPGA_NONE_CLK_NONE_UWB_DW3000_DUAL_RF1] = {
+    .name = "FPGA=None,CLK=None,UWB=DW3000-DualRF(RF1)",
+    .uwb = {
+      .device = BOARD_UWB_DEVICE_DW3000_DUAL_RF,
+      .rf_paths_fitted = BOARD_RF_PATH_1,
+    },
+    .fpga = {
+      .device = BOARD_FPGA_DEVICE_NONE,
+    },
+    .clock = {
+      .device = BOARD_CLOCK_DEVICE_NONE,
+      .reference_counter_connected = false,
+    },
   },
-  [BOARD_VARIANT_UWB_RF1_SIT5156] = {
-    .name = "UWB-RF1-SiT5156",
-    .clock_device = BOARD_CLOCK_DEVICE_SIT5156,
-    .available_rf_paths = BOARD_RF_PATH_1,
-    .fpga_fitted = false,
-    .external_clock_counter_connected = true,
+  [BOARD_VARIANT_FPGA_NONE_CLK_DCTCXO_SIT5156_UWB_DW3000_DUAL_RF1] = {
+    .name = "FPGA=None,CLK=DCTCXO-SiT5156,UWB=DW3000-DualRF(RF1)",
+    .uwb = {
+      .device = BOARD_UWB_DEVICE_DW3000_DUAL_RF,
+      .rf_paths_fitted = BOARD_RF_PATH_1,
+    },
+    .fpga = {
+      .device = BOARD_FPGA_DEVICE_NONE,
+    },
+    .clock = {
+      .device = BOARD_CLOCK_DEVICE_DCTCXO_SIT5156,
+      .reference_counter_connected = true,
+    },
   },
-  [BOARD_VARIANT_FULL_SIT5156] = {
-    .name = "Full-SiT5156",
-    .clock_device = BOARD_CLOCK_DEVICE_SIT5156,
-    .available_rf_paths = BOARD_RF_PATH_BOTH,
-    .fpga_fitted = true,
-    .external_clock_counter_connected = true,
+  [BOARD_VARIANT_FPGA_ICE40UP5K_CLK_DCTCXO_SIT5156_UWB_DW3000_DUAL_RF1_RF2] = {
+    .name = "FPGA=iCE40UP5K,CLK=DCTCXO-SiT5156,UWB=DW3000-DualRF(RF1,RF2)",
+    .uwb = {
+      .device = BOARD_UWB_DEVICE_DW3000_DUAL_RF,
+      .rf_paths_fitted = BOARD_RF_PATH_BOTH,
+    },
+    .fpga = {
+      .device = BOARD_FPGA_DEVICE_ICE40UP5K,
+    },
+    .clock = {
+      .device = BOARD_CLOCK_DEVICE_DCTCXO_SIT5156,
+      .reference_counter_connected = true,
+    },
   },
-  [BOARD_VARIANT_FULL_SIT3907] = {
-    .name = "Full-SiT3907",
-    .clock_device = BOARD_CLOCK_DEVICE_SIT3907,
-    .available_rf_paths = BOARD_RF_PATH_BOTH,
-    .fpga_fitted = true,
-    .external_clock_counter_connected = true,
+  [BOARD_VARIANT_FPGA_ICE40UP5K_CLK_DCO_SIT3907_UWB_DW3000_DUAL_RF1_RF2] = {
+    .name = "FPGA=iCE40UP5K,CLK=DCO-SiT3907,UWB=DW3000-DualRF(RF1,RF2)",
+    .uwb = {
+      .device = BOARD_UWB_DEVICE_DW3000_DUAL_RF,
+      .rf_paths_fitted = BOARD_RF_PATH_BOTH,
+    },
+    .fpga = {
+      .device = BOARD_FPGA_DEVICE_ICE40UP5K,
+    },
+    .clock = {
+      .device = BOARD_CLOCK_DEVICE_DCO_SIT3907,
+      .reference_counter_connected = true,
+    },
   },
 };
 
 static board_description_t s_description = {
   .name = "Unconfigured",
-  .clock_device = BOARD_CLOCK_DEVICE_NONE,
-  .available_rf_paths = BOARD_RF_PATH_NONE,
+  .uwb = {
+    .device = BOARD_UWB_DEVICE_NONE,
+    .rf_paths_fitted = BOARD_RF_PATH_NONE,
+  },
+  .fpga = {
+    .device = BOARD_FPGA_DEVICE_NONE,
+  },
+  .clock = {
+    .device = BOARD_CLOCK_DEVICE_NONE,
+    .reference_counter_connected = false,
+  },
 };
 
-static board_components_t s_board = {
+static board_peripheral_map_t s_board = {
   .uwb = {
     .spi = {
       .hspi = &hspi1,
@@ -250,6 +294,54 @@ static board_status_t hal_to_board_status(HAL_StatusTypeDef status)
   }
 }
 
+static board_rf_path_mask_t board_uwb_device_supported_rf_paths(
+    board_uwb_device_t device)
+{
+  switch (device) {
+    case BOARD_UWB_DEVICE_DW3000_SINGLE_RF:
+      return BOARD_RF_PATH_1;
+    case BOARD_UWB_DEVICE_DW3000_DUAL_RF:
+      return BOARD_RF_PATH_BOTH;
+    case BOARD_UWB_DEVICE_NONE:
+    default:
+      return BOARD_RF_PATH_NONE;
+  }
+}
+
+static bool board_rf_path_mask_is_valid(board_rf_path_mask_t paths)
+{
+  return (paths != BOARD_RF_PATH_NONE) &&
+         (((uint32_t)paths & ~(uint32_t)BOARD_RF_PATH_BOTH) == 0U);
+}
+
+static bool board_description_is_valid(
+    const board_description_t *description)
+{
+  board_rf_path_mask_t supported_paths;
+
+  if ((description == NULL) || (description->name == NULL) ||
+      !board_rf_path_mask_is_valid(description->uwb.rf_paths_fitted)) {
+    return false;
+  }
+
+  supported_paths =
+      board_uwb_device_supported_rf_paths(description->uwb.device);
+  if ((supported_paths == BOARD_RF_PATH_NONE) ||
+      ((description->uwb.rf_paths_fitted & supported_paths) !=
+       description->uwb.rf_paths_fitted)) {
+    return false;
+  }
+
+  if ((description->fpga.device != BOARD_FPGA_DEVICE_NONE) &&
+      (description->fpga.device != BOARD_FPGA_DEVICE_ICE40UP5K)) {
+    return false;
+  }
+
+  return (description->clock.device == BOARD_CLOCK_DEVICE_NONE) ||
+         (description->clock.device == BOARD_CLOCK_DEVICE_DCTCXO_SIT5156) ||
+         (description->clock.device == BOARD_CLOCK_DEVICE_DCO_SIT3907);
+}
+
 static GPIO_PinState inactive_state(GPIO_PinState active_state)
 {
   return (active_state == GPIO_PIN_SET) ? GPIO_PIN_RESET : GPIO_PIN_SET;
@@ -261,7 +353,9 @@ static const board_spi_device_t *spi_device_from_target(board_spi_target_t targe
     case BOARD_SPI_TARGET_UWB:
       return &s_board.uwb.spi;
     case BOARD_SPI_TARGET_FPGA:
-      return s_description.fpga_fitted ? &s_board.fpga.spi : NULL;
+      return (s_description.fpga.device == BOARD_FPGA_DEVICE_ICE40UP5K)
+                 ? &s_board.fpga.spi
+                 : NULL;
     default:
       return NULL;
   }
@@ -294,6 +388,9 @@ board_status_t board_init(board_variant_t variant)
   if ((uint32_t)variant >= (uint32_t)BOARD_VARIANT_COUNT) {
     return BOARD_BAD_ARG;
   }
+  if (!board_description_is_valid(&s_variants[variant])) {
+    return BOARD_BAD_ARG;
+  }
 
   s_description = s_variants[variant];
   s_pc_tx_head = 0U;
@@ -302,19 +399,19 @@ board_status_t board_init(board_variant_t variant)
   s_pc_tx_started_ms = 0U;
   s_pc_tx_errors = 0U;
   s_pc_tx_dma_active = false;
-  s_external_clock_counter_running = false;
+  s_reference_counter_running = false;
 
   board_spi_deselect_all();
-  if (s_description.fpga_fitted) {
+  if (s_description.fpga.device == BOARD_FPGA_DEVICE_ICE40UP5K) {
     board_gpio_write(&s_board.fpga.user_enable, false);
     board_gpio_write(&s_board.fpga.reset_n, false);
   }
   board_uwb_reset_release();
-  if (s_description.clock_device == BOARD_CLOCK_DEVICE_SIT3907) {
+  if (s_description.clock.device == BOARD_CLOCK_DEVICE_DCO_SIT3907) {
     board_clkdp_set_mode(BOARD_CLKDP_TRISTATE);
   }
-  if (s_description.external_clock_counter_connected &&
-      (board_external_clock_counter_start() != BOARD_OK)) {
+  if (s_description.clock.reference_counter_connected &&
+      (board_reference_counter_start() != BOARD_OK)) {
     return BOARD_ERROR;
   }
   return BOARD_OK;
@@ -327,18 +424,22 @@ uint32_t board_get_time_ms(void)
 
 const struct dw3000_platform *board_uwb_get_platform(void)
 {
-  return &s_dw3000_platform;
+  return (s_description.uwb.device != BOARD_UWB_DEVICE_NONE)
+             ? &s_dw3000_platform
+             : NULL;
 }
 
 const struct ice40up5k_platform *board_fpga_get_platform(void)
 {
-  return s_description.fpga_fitted ? &s_ice40up5k_platform : NULL;
+  return (s_description.fpga.device == BOARD_FPGA_DEVICE_ICE40UP5K)
+             ? &s_ice40up5k_platform
+             : NULL;
 }
 
 board_status_t board_fpga_set_user_enabled(bool enabled)
 {
-  if (!s_description.fpga_fitted) {
-    return BOARD_ERROR;
+  if (s_description.fpga.device != BOARD_FPGA_DEVICE_ICE40UP5K) {
+    return BOARD_UNSUPPORTED;
   }
 
   board_gpio_write(&s_board.fpga.user_enable, enabled);
@@ -348,6 +449,89 @@ board_status_t board_fpga_set_user_enabled(bool enabled)
 const board_description_t *board_get_description(void)
 {
   return &s_description;
+}
+
+const char *board_status_name(board_status_t status)
+{
+  switch (status) {
+    case BOARD_OK:
+      return "OK";
+    case BOARD_ERROR:
+      return "ERROR";
+    case BOARD_TIMEOUT:
+      return "TIMEOUT";
+    case BOARD_BAD_ARG:
+      return "BAD_ARG";
+    case BOARD_BUSY:
+      return "BUSY";
+    case BOARD_UNSUPPORTED:
+      return "UNSUPPORTED";
+    default:
+      return "UNKNOWN";
+  }
+}
+
+const char *board_clock_device_name(board_clock_device_t device)
+{
+  switch (device) {
+    case BOARD_CLOCK_DEVICE_DCTCXO_SIT5156:
+      return "DCTCXO-SiT5156";
+    case BOARD_CLOCK_DEVICE_DCO_SIT3907:
+      return "DCO-SiT3907";
+    case BOARD_CLOCK_DEVICE_NONE:
+    default:
+      return "None";
+  }
+}
+
+const char *board_fpga_device_name(board_fpga_device_t device)
+{
+  switch (device) {
+    case BOARD_FPGA_DEVICE_ICE40UP5K:
+      return "iCE40UP5K";
+    case BOARD_FPGA_DEVICE_NONE:
+    default:
+      return "None";
+  }
+}
+
+const char *board_uwb_device_name(board_uwb_device_t device)
+{
+  switch (device) {
+    case BOARD_UWB_DEVICE_DW3000_SINGLE_RF:
+      return "DW3000-SingleRF";
+    case BOARD_UWB_DEVICE_DW3000_DUAL_RF:
+      return "DW3000-DualRF";
+    case BOARD_UWB_DEVICE_NONE:
+    default:
+      return "None";
+  }
+}
+
+board_status_t board_validate_uwb_requirement(
+    const board_uwb_requirement_t *requirement)
+{
+  board_rf_path_mask_t device_paths;
+
+  if ((requirement == NULL) ||
+      !board_rf_path_mask_is_valid(requirement->required_rf_paths)) {
+    return BOARD_BAD_ARG;
+  }
+  if (!board_description_is_valid(&s_description)) {
+    return BOARD_ERROR;
+  }
+
+  device_paths =
+      board_uwb_device_supported_rf_paths(s_description.uwb.device);
+  if (((device_paths & requirement->required_rf_paths) !=
+       requirement->required_rf_paths) ||
+      ((s_description.uwb.rf_paths_fitted &
+        requirement->required_rf_paths) !=
+       requirement->required_rf_paths)) {
+    return BOARD_UNSUPPORTED;
+  }
+
+  return BOARD_OK;
 }
 
 static void board_gpio_write(const board_gpio_t *gpio, bool active)
@@ -371,7 +555,7 @@ static bool board_gpio_read(const board_gpio_t *gpio)
 static void board_spi_deselect_all(void)
 {
   board_gpio_write(&s_board.uwb.spi.cs, false);
-  if (s_description.fpga_fitted) {
+  if (s_description.fpga.device == BOARD_FPGA_DEVICE_ICE40UP5K) {
     board_gpio_write(&s_board.fpga.spi.cs, false);
   }
 }
@@ -486,13 +670,14 @@ static board_status_t board_i2c_mem_read_7bit(
       dev->timeout_ms));
 }
 
-board_status_t board_clock_i2c_write(
+board_status_t board_clock_register_write(
     uint8_t register_address,
     const uint8_t *data,
     size_t len)
 {
-  if (s_description.clock_device != BOARD_CLOCK_DEVICE_SIT5156) {
-    return BOARD_ERROR;
+  if (s_description.clock.device !=
+      BOARD_CLOCK_DEVICE_DCTCXO_SIT5156) {
+    return BOARD_UNSUPPORTED;
   }
 
   return board_i2c_mem_write_7bit(
@@ -503,13 +688,14 @@ board_status_t board_clock_i2c_write(
       len);
 }
 
-board_status_t board_clock_i2c_read(
+board_status_t board_clock_register_read(
     uint8_t register_address,
     uint8_t *data,
     size_t len)
 {
-  if (s_description.clock_device != BOARD_CLOCK_DEVICE_SIT5156) {
-    return BOARD_ERROR;
+  if (s_description.clock.device !=
+      BOARD_CLOCK_DEVICE_DCTCXO_SIT5156) {
+    return BOARD_UNSUPPORTED;
   }
 
   return board_i2c_mem_read_7bit(
@@ -643,25 +829,25 @@ board_status_t board_crc32_calculate(
   return BOARD_OK;
 }
 
-static board_status_t board_external_clock_counter_start(void)
+static board_status_t board_reference_counter_start(void)
 {
   board_status_t status;
 
-  if (!s_description.external_clock_counter_connected) {
-    return BOARD_ERROR;
+  if (!s_description.clock.reference_counter_connected) {
+    return BOARD_UNSUPPORTED;
   }
 
   __HAL_TIM_SET_COUNTER(s_board.external_clock_timer.htim, 0U);
   __HAL_TIM_CLEAR_FLAG(s_board.external_clock_timer.htim, TIM_FLAG_UPDATE);
   status = hal_to_board_status(
       HAL_TIM_Base_Start(s_board.external_clock_timer.htim));
-  s_external_clock_counter_running = status == BOARD_OK;
+  s_reference_counter_running = status == BOARD_OK;
   return status;
 }
 
-uint32_t board_external_clock_counter_get(void)
+uint32_t board_reference_counter_get(void)
 {
-  return s_external_clock_counter_running
+  return s_reference_counter_running
              ? __HAL_TIM_GET_COUNTER(s_board.external_clock_timer.htim)
              : 0U;
 }
@@ -670,7 +856,7 @@ void board_clkdp_set_mode(board_clkdp_mode_t mode)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
 
-  if (s_description.clock_device != BOARD_CLOCK_DEVICE_SIT3907) {
+  if (s_description.clock.device != BOARD_CLOCK_DEVICE_DCO_SIT3907) {
     return;
   }
 
@@ -1014,10 +1200,10 @@ void board_delay_us(uint32_t delay_us)
 
 bool board_get_reference_time_ms(uint32_t *timestamp_ms)
 {
-  if ((timestamp_ms == NULL) || !s_external_clock_counter_running) {
+  if ((timestamp_ms == NULL) || !s_reference_counter_running) {
     return false;
   }
 
-  *timestamp_ms = board_external_clock_counter_get();
+  *timestamp_ms = board_reference_counter_get();
   return true;
 }

@@ -33,7 +33,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define HOPWINS_BOARD_VARIANT                  BOARD_VARIANT_FULL_SIT5156
+#define HOPWINS_BOARD_VARIANT                  BOARD_VARIANT_FPGA_ICE40UP5K_CLK_DCTCXO_SIT5156_UWB_DW3000_DUAL_RF1_RF2
 #define HOPWINS_APP_WORKFLOW                   APP_WORKFLOW_UWB_STS_DUAL_RX_DIAGNOSTIC
 #define HOPWINS_UWB_RF_MODE                    DW3000_RF_MODE_MANUAL_1
 #define HOPWINS_UWB_PDOA_MODE                  DW3000_PDOA_MODE_DISABLED
@@ -129,6 +129,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+  board_status_t board_status;
 
   /* USER CODE END 1 */
 
@@ -165,8 +166,12 @@ int main(void)
   APP_BootWrite("BOOT: PERIPHERALS READY\r\n");
   s_boot_stage = "BOARD";
   APP_BootWrite("BOOT: BOARD INIT\r\n");
-  if (board_init(HOPWINS_BOARD_VARIANT) != BOARD_OK)
+  board_status = board_init(HOPWINS_BOARD_VARIANT);
+  if (board_status != BOARD_OK)
   {
+    APP_BootWrite("BOOT: BOARD INIT ERROR: ");
+    APP_BootWrite(board_status_name(board_status));
+    APP_BootWrite("\r\n");
     Error_Handler();
   }
 

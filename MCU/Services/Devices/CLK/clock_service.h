@@ -32,23 +32,24 @@ typedef struct {
   bool initialized;
   bool register_readback_verified;
   bool output_enabled;
-  bool external_counter_checked;
+  bool reference_counter_checked;
   bool output_clock_detected;
-  uint8_t i2c_address_7bit;
+  uint8_t control_address_7bit;
   uint16_t frequency_lsw;
   uint16_t frequency_msw_oe;
   uint16_t pull_range_register;
   int32_t frequency_control_word;
   int32_t pull_ppb;
   int32_t pull_limit_ppb;
-  uint32_t external_counter_delta;
+  uint32_t reference_counter_delta;
 } clock_service_state_t;
 
 /**
   * @brief Initialize the XO selected by board_init() and verify its output.
   *
   * The SiT5156 path restores nominal frequency, enables software OE, reads all
-  * values back, waits for rated stability, and checks that TIM2 ETR advances.
+  * values back, waits for rated stability, and checks that the Board reference
+  * counter advances.
   */
 clock_service_status_t clock_service_init(void);
 

@@ -27,6 +27,10 @@ void console_service_report_firmware_profile(
     const board_description_t *board,
     const char *role_name,
     const char *build_type);
+void console_service_report_uwb_board_incompatibility(
+    const board_description_t *board,
+    const board_uwb_requirement_t *requirement,
+    board_status_t status);
 void console_service_report_clock(const clock_service_state_t *state);
 void console_service_report_fpga_image(const fpga_service_state_t *state);
 void console_service_report_fpga_result(const fpga_service_state_t *state);

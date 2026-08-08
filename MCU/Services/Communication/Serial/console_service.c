@@ -49,7 +49,7 @@ void console_service_report_firmware_profile(
     const char *role_name,
     const char *build_type)
 {
-  uint8_t storage[224];
+  uint8_t storage[320];
   console_protocol_message_t message;
 
   if ((board == NULL) || (role_name == NULL) || (build_type == NULL)) {
@@ -64,23 +64,57 @@ void console_service_report_firmware_profile(
   (void)console_protocol_append_text(&message, ", BUILD=");
   (void)console_protocol_append_text(&message, build_type);
   (void)console_protocol_append_text(&message, ", FPGA=");
-  (void)console_protocol_append_bool(&message, board->fpga_fitted);
-  (void)console_protocol_append_text(&message, ", CLOCK_DEVICE=");
-  if (board->clock_device == BOARD_CLOCK_DEVICE_SIT5156) {
-    (void)console_protocol_append_text(&message, "SiT5156");
-  } else if (board->clock_device == BOARD_CLOCK_DEVICE_SIT3907) {
-    (void)console_protocol_append_text(&message, "SiT3907");
-  } else {
-    (void)console_protocol_append_text(&message, "NONE");
-  }
-  (void)console_protocol_append_text(&message, ", EXT_TIMER=");
+  (void)console_protocol_append_text(
+      &message,
+      board_fpga_device_name(board->fpga.device));
+  (void)console_protocol_append_text(&message, ", CLOCK=");
+  (void)console_protocol_append_text(
+      &message,
+      board_clock_device_name(board->clock.device));
+  (void)console_protocol_append_text(&message, ", UWB=");
+  (void)console_protocol_append_text(
+      &message,
+      board_uwb_device_name(board->uwb.device));
+  (void)console_protocol_append_text(&message, ", REF_COUNTER=");
   (void)console_protocol_append_bool(
       &message,
-      board->external_clock_counter_connected);
-  (void)console_protocol_append_text(&message, ", RF_PATHS=0x");
+      board->clock.reference_counter_connected);
+  (void)console_protocol_append_text(&message, ", RF_FITTED=0x");
   (void)console_protocol_append_hex(
       &message,
-      (uint8_t)board->available_rf_paths,
+      (uint8_t)board->uwb.rf_paths_fitted,
+      1U);
+  (void)console_service_send(&message);
+}
+
+void console_service_report_uwb_board_incompatibility(
+    const board_description_t *board,
+    const board_uwb_requirement_t *requirement,
+    board_status_t status)
+{
+  uint8_t storage[224];
+  console_protocol_message_t message;
+
+  if ((board == NULL) || (requirement == NULL)) {
+    return;
+  }
+
+  console_protocol_message_init(&message, storage, sizeof(storage));
+  (void)console_protocol_append_text(&message, "BOARD ERROR, STATUS=");
+  (void)console_protocol_append_text(&message, board_status_name(status));
+  (void)console_protocol_append_text(&message, ", UWB=");
+  (void)console_protocol_append_text(
+      &message,
+      board_uwb_device_name(board->uwb.device));
+  (void)console_protocol_append_text(&message, ", RF_REQUIRED=0x");
+  (void)console_protocol_append_hex(
+      &message,
+      (uint8_t)requirement->required_rf_paths,
+      1U);
+  (void)console_protocol_append_text(&message, ", RF_FITTED=0x");
+  (void)console_protocol_append_hex(
+      &message,
+      (uint8_t)board->uwb.rf_paths_fitted,
       1U);
   (void)console_service_send(&message);
 }
@@ -115,11 +149,11 @@ void console_service_report_clock(const clock_service_state_t *state)
   (void)console_protocol_append_bool(
       &message,
       state->register_readback_verified);
-  if (state->clock_device == BOARD_CLOCK_DEVICE_SIT5156) {
+  if (state->clock_device == BOARD_CLOCK_DEVICE_DCTCXO_SIT5156) {
     (void)console_protocol_append_text(&message, ", ADDR=0x");
     (void)console_protocol_append_hex(
         &message,
-        state->i2c_address_7bit,
+        state->control_address_7bit,
         2U);
     (void)console_protocol_append_text(&message, ", REG0=0x");
     (void)console_protocol_append_hex(
@@ -137,14 +171,14 @@ void console_service_report_clock(const clock_service_state_t *state)
         state->pull_range_register,
         4U);
   }
-  (void)console_protocol_append_text(&message, ", TIMER_CHECK=");
+  (void)console_protocol_append_text(&message, ", REF_COUNTER_CHECK=");
   (void)console_protocol_append_bool(
       &message,
-      state->external_counter_checked);
-  (void)console_protocol_append_text(&message, ", TIMER_DELTA=0x");
+      state->reference_counter_checked);
+  (void)console_protocol_append_text(&message, ", REF_COUNTER_DELTA=0x");
   (void)console_protocol_append_hex(
       &message,
-      state->external_counter_delta,
+      state->reference_counter_delta,
       8U);
   (void)console_protocol_append_text(&message, ", CLOCK_DETECTED=");
   (void)console_protocol_append_bool(

@@ -31,11 +31,11 @@ static void copy_sit5156_snapshot(void);
 static void dp_drive_high(void);
 static void dp_drive_low(void);
 static void dp_release(void);
-static bool i2c_write(
+static bool clock_register_write(
     uint8_t reg_address,
     const uint8_t *data,
     size_t len);
-static bool i2c_read(
+static bool clock_register_read(
     uint8_t reg_address,
     uint8_t *data,
     size_t len);
@@ -48,8 +48,8 @@ static const sit3907_platform_t s_sit3907_platform = {
 };
 
 static const sit5156_platform_t s_sit5156_platform = {
-  .write = i2c_write,
-  .read = i2c_read,
+  .write = clock_register_write,
+  .read = clock_register_read,
   .delay_us = board_delay_us,
 };
 
@@ -63,13 +63,13 @@ clock_service_status_t clock_service_init(void)
     s_state.status = CLOCK_SERVICE_STATUS_NO_DEVICE;
     return s_state.status;
   }
-  s_state.clock_device = board->clock_device;
+  s_state.clock_device = board->clock.device;
 
   switch (s_state.clock_device) {
-    case BOARD_CLOCK_DEVICE_SIT5156:
+    case BOARD_CLOCK_DEVICE_DCTCXO_SIT5156:
       status = init_sit5156();
       break;
-    case BOARD_CLOCK_DEVICE_SIT3907:
+    case BOARD_CLOCK_DEVICE_DCO_SIT3907:
       status = init_sit3907();
       break;
     case BOARD_CLOCK_DEVICE_NONE:
@@ -95,12 +95,12 @@ clock_service_status_t clock_service_set_pull_ppb(int32_t ppb)
   }
 
   switch (s_state.clock_device) {
-    case BOARD_CLOCK_DEVICE_SIT5156:
+    case BOARD_CLOCK_DEVICE_DCTCXO_SIT5156:
       status = map_sit5156_status(
           sit5156_set_pull_ppb(&s_sit5156, ppb));
       copy_sit5156_snapshot();
       break;
-    case BOARD_CLOCK_DEVICE_SIT3907:
+    case BOARD_CLOCK_DEVICE_DCO_SIT3907:
       status = map_sit3907_status(
           sit3907_set_pull_ppb(&s_sit3907, ppb));
       if (status == CLOCK_SERVICE_STATUS_OK) {
@@ -147,7 +147,7 @@ static clock_service_status_t init_sit5156(void)
   sit5156_status_t driver_status;
 
   s_state.part_name = "SiT5156";
-  s_state.i2c_address_7bit = SIT5156_I2C_ADDRESS_7BIT;
+  s_state.control_address_7bit = SIT5156_I2C_ADDRESS_7BIT;
   s_state.pull_limit_ppb = SIT5156_MAX_PULL_PPB;
 
   driver_status = sit5156_init(&s_sit5156, &s_sit5156_platform);
@@ -184,16 +184,16 @@ static clock_service_status_t verify_output_clock(void)
   uint32_t after;
 
   if ((board == NULL) ||
-      !board->external_clock_counter_connected) {
+      !board->clock.reference_counter_connected) {
     return CLOCK_SERVICE_STATUS_OK;
   }
 
-  s_state.external_counter_checked = true;
-  before = board_external_clock_counter_get();
+  s_state.reference_counter_checked = true;
+  before = board_reference_counter_get();
   board_delay_ms(CLOCK_SERVICE_COUNTER_SAMPLE_MS);
-  after = board_external_clock_counter_get();
-  s_state.external_counter_delta = after - before;
-  s_state.output_clock_detected = s_state.external_counter_delta != 0U;
+  after = board_reference_counter_get();
+  s_state.reference_counter_delta = after - before;
+  s_state.output_clock_detected = s_state.reference_counter_delta != 0U;
 
   return s_state.output_clock_detected
              ? CLOCK_SERVICE_STATUS_OK
@@ -266,18 +266,18 @@ static void dp_release(void)
   board_clkdp_set_mode(BOARD_CLKDP_TRISTATE);
 }
 
-static bool i2c_write(
+static bool clock_register_write(
     uint8_t reg_address,
     const uint8_t *data,
     size_t len)
 {
-  return board_clock_i2c_write(reg_address, data, len) == BOARD_OK;
+  return board_clock_register_write(reg_address, data, len) == BOARD_OK;
 }
 
-static bool i2c_read(
+static bool clock_register_read(
     uint8_t reg_address,
     uint8_t *data,
     size_t len)
 {
-  return board_clock_i2c_read(reg_address, data, len) == BOARD_OK;
+  return board_clock_register_read(reg_address, data, len) == BOARD_OK;
 }

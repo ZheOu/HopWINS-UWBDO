@@ -40,7 +40,7 @@ void do_leader_service_init(
 
   s_uwb_profile = *uwb_profile;
   s_clock_running =
-      board->clock_device == BOARD_CLOCK_DEVICE_NONE;
+      board->clock.device == BOARD_CLOCK_DEVICE_NONE;
   s_uwb_running = false;
   s_next_clock_retry_ms = 0U;
   s_next_uwb_retry_ms = 0U;

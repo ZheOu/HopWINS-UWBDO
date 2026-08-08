@@ -11,6 +11,7 @@
 #include "do_clock_tracking_service.h"
 #include "do_follower_service.h"
 #include "do_leader_service.h"
+#include "console_service.h"
 #include "uwb_sts_diagnostic_service.h"
 #include "uwb_profile.h"
 
@@ -32,6 +33,26 @@ static board_rf_path_mask_t required_rf_paths(
     default:
       return BOARD_RF_PATH_NONE;
   }
+}
+
+static bool validate_uwb_requirement(
+    const board_description_t *board,
+    board_rf_path_mask_t required_paths)
+{
+  const board_uwb_requirement_t requirement = {
+    .required_rf_paths = required_paths,
+  };
+  board_status_t status = board_validate_uwb_requirement(&requirement);
+
+  if (status == BOARD_OK) {
+    return true;
+  }
+
+  console_service_report_uwb_board_incompatibility(
+      board,
+      &requirement,
+      status);
+  return false;
 }
 
 static bool configure_uwb_profile(
@@ -61,7 +82,7 @@ static bool configure_uwb_profile(
       s_uwb_profile.radio.pdoa_mode = DW3000_PDOA_MODE_3;
       required_paths = BOARD_RF_PATH_BOTH;
     }
-    return (board->available_rf_paths & required_paths) == required_paths;
+    return validate_uwb_requirement(board, required_paths);
   }
 
   if (!do_loop_strategy_is_supported(config->do_loop_strategy) ||
@@ -90,8 +111,7 @@ static bool configure_uwb_profile(
        config->follower_rf_ab_test)
           ? BOARD_RF_PATH_BOTH
           : required_rf_paths(config->uwb_rf_mode);
-  if ((required_paths == BOARD_RF_PATH_NONE) ||
-      ((board->available_rf_paths & required_paths) != required_paths)) {
+  if (!validate_uwb_requirement(board, required_paths)) {
     return false;
   }
   s_uwb_profile.radio.rf_mode = config->uwb_rf_mode;
@@ -134,8 +154,8 @@ bool workflow_dispatcher_init(const app_config_t *config)
       break;
 
     case APP_WORKFLOW_DO_FOLLOWER:
-      if ((board->clock_device == BOARD_CLOCK_DEVICE_NONE) ||
-          !board->external_clock_counter_connected ||
+      if ((board->clock.device == BOARD_CLOCK_DEVICE_NONE) ||
+          !board->clock.reference_counter_connected ||
           (config->do_clock_tracking &&
            config->follower_rf_ab_test)) {
         return false;
