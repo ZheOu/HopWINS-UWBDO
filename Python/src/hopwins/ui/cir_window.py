@@ -185,7 +185,9 @@ class CirMonitorWindow(QtWidgets.QMainWindow):
         statistics: StatisticsSnapshot,
     ) -> None:
         header = capture.header
-        self._labels["capture"].setText(str(header.capture_id))
+        self._labels["capture"].setText(
+            f"{header.capture_id} / {header.cir_source.name}"
+        )
         self._labels["rf_port"].setText(
             f"{header.rf_port or '?'} (delay 0x{header.rx_antenna_delay:04X})"
         )

@@ -58,7 +58,9 @@ def run(
                 if capture_count == 1 or capture_count % 100 == 0:
                     print(
                         f"captures={capture_count} "
-                        f"last_id={event.capture.header.capture_id}"
+                        f"last_id={event.capture.header.capture_id} "
+                        f"source={event.capture.header.cir_source.name} "
+                        f"RF{event.capture.header.rf_port}"
                     )
             elif isinstance(event, WorkerError):
                 print(f"serial error: {event.message}")

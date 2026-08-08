@@ -11,8 +11,7 @@ import numpy as np
 from hopwins.analysis.cir import decode_i24_q24, magnitude_db
 from hopwins.capture.assembler import CirCapture
 from hopwins.capture.reader import CaptureFileReader
-from hopwins.protocol.packets import PacketFlags
-from hopwins.storage.reader import resolve_raw_stream
+from hopwins.protocol.packets import CirSource, PacketFlags
 
 if TYPE_CHECKING:
     from hopwins.core.task import TaskContext
@@ -135,15 +134,33 @@ def format_capture(
                 ("    raw-to-adjusted CIA correction = unavailable for this packet"),
             )
         )
-    timestamp_details.append(
-        "    IP_TOA / STS_TOA = not captured separately by HCIR v2"
-    )
+    if header.version >= 3 and header.pdoa_diagnostic_valid:
+        timestamp_details.extend(
+            (
+                (
+                    f"    IP_TOA=0x{header.ipatov_timestamp:010X}, "
+                    f"STS0_TOA=0x{header.sts0_timestamp:010X}, "
+                    f"STS1_TOA=0x{header.sts1_timestamp:010X}"
+                ),
+                (
+                    f"    selected {header.cir_source.name} TOA="
+                    f"0x{header.cir_timestamp:010X}, "
+                    f"TDOA={header.tdoa_dtu} DTU, "
+                    f"PDOA={header.pdoa_radians:.6f} rad"
+                ),
+            )
+        )
+    else:
+        timestamp_details.append(
+            "    IP_TOA / STS_TOA = unavailable before HCIR v3"
+        )
 
     lines = [
-        f"Capture {header.capture_id}",
+        f"Capture {header.capture_id} / {header.cir_source.name}",
         (
             f"  packet: HCIR v{header.version}, flags={_format_flags(header.flags)}, "
             f"frame_len={header.frame_length}, RF_port={header.rf_port}, "
+            f"CIR_group={header.cir_group_size}, "
             f"chunks={capture.received_chunks}/{capture.expected_chunks}"
         ),
         "  time:",
@@ -202,6 +219,13 @@ def format_capture(
             f"status(diag/cir/register)="
             f"{header.diagnostic_status}/{header.cir_status}/"
             f"{header.register_status}"
+        ),
+        (
+            f"    STS_status={header.sts0_status:#06x}/{header.sts1_status:#06x}, "
+            f"POA={header.sts0_phase:#06x}/{header.sts1_phase:#06x}, "
+            f"PDOA_status={header.pdoa_diagnostic_status}"
+            if header.cir_source in (CirSource.STS0, CirSource.STS1)
+            else "    STS/PDoA diagnostics: not selected"
         ),
         f"  frame[0:{frame_bytes}] = {capture.frame[:frame_bytes].hex(' ')}",
     ]

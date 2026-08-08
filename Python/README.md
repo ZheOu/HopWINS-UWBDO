@@ -74,271 +74,265 @@ parameter overrides, the Git commit, and whether the working tree was dirty in
 
 ## Commands
 
-List the explicit registry:
+Every name printed by `hopwins tasks` is directly executable and reads its
+matching `[task.<name>]` section from `config.ini`:
 
 ```sh
 hopwins tasks
-hopwins tasks --category capture
+hopwins list_ports
+hopwins serial_probe --device follower
+hopwins cir_monitor --device follower
+hopwins raw_record --device follower
+hopwins capture_inspect
+hopwins static_timing_analysis
+hopwins spatial_timing_analysis
+hopwins replay
 ```
 
-Record a live session until Ctrl+C:
+`hopwins run` executes the task selected by `[app]`. `--task` and `--device`
+override `[app]` for one invocation:
 
 ```sh
-hopwins run session_capture --device follower --label cable-run-01
+hopwins run
+hopwins run --task raw_record --device follower
 ```
 
-Record for a fixed duration and attach experiment notes:
-
-```sh
-hopwins run session_capture --device follower --duration 600 \
-  --label corridor-los-5m --notes "static, RF1"
-```
-
-Dataset tasks also declare a default label, a default note, and selected
-typed parameter prompts beside their own task code. Use `--prompt` to confirm
-them before opening the serial port; press Enter to keep the value in brackets:
-
-```powershell
-hopwins run do_follower_dataset --device follower --prompt
-# Dataset label [do-follower]: corridor-los-5m
-# Dataset note [DO-Follower clock tracking, RX health, and CIR dataset.]: 5 m LOS
-# Recording duration in seconds (0 = until Ctrl+C) [0]: 60
-```
-
-`--note` is a short alias for `--notes`. For unattended scripts, omit
-`--prompt` and pass any values directly. Explicit command-line values have the
-highest priority, task parameters from `config.toml` provide the next defaults,
-and the task's `PROMPT` declaration is the final fallback. The resolved label,
-note, and parameters are written to `manifest.json` in either mode.
-
-Replay an existing session through the same decoder and task, without copying
-the raw stream into the derived session:
-
-```sh
-hopwins run session_capture --mode offline \
-  --input experiments/SESSION_NAME --label reprocess-v2
-```
-
-Task parameters can be overridden without editing shared configuration:
-
-```sh
-hopwins run session_capture --param protocol=hcir \
-  --param replay_speed=0
-```
-
-Existing utilities remain registered while they are migrated:
+The original argument-driven commands remain as compatibility shortcuts:
 
 ```sh
 hopwins run cir_monitor --device follower
 hopwins run capture_inspect --mode offline
 hopwins run replay --mode offline
 hopwins ports
+hopwins monitor --port /dev/cu.usbserial-0001
+hopwins record --port COM5 --output captures/session.hcir
+hopwins replay captures/session.hcir
 ```
 
-## MCU workflow datasets
-
-Each runnable workflow under `MCU/Services` has one Python dataset entry. The
-task module owns only its tables; serial capture, host timestamps, offline
-replay, manifests, and raw storage stay shared.
-
-| MCU workflow | Python task | Structured outputs |
-|---|---|---|
-| `DO-Leader` | `do_leader_dataset` | `serial_text.csv`, `uwb_tx.csv` |
-| `DO-Follower` | `do_follower_dataset` | `serial_text.csv`, `uwb_rx_health.csv`, `do_track.csv`, optional `captures.csv` |
-| `UWB-STS-TX-Diagnostic` | `sts_tx_dataset` | `serial_text.csv`, `uwb_tx.csv` |
-| `UWB-STS-Dual-RX-Diagnostic` | `dual_cir_dataset` | `uwb_rx_health.csv`, `dual_cir_pairs.csv`, paired I/Q binary |
-
-Run a dataset directly from its matching board:
-
-```powershell
-hopwins run do_leader_dataset --device leader --duration 60 `
-  --label leader-bench-01
-hopwins run do_follower_dataset --device follower --duration 60 `
-  --label follower-track-01
-hopwins run sts_tx_dataset --device sts_tx --duration 60 `
-  --label sts-tx-01
-hopwins diagnose dual_cir_dataset --device sts_dual_rx --duration 60 `
-  --label sts-dual-rx-01
-```
-
-The same commands can be run with `--prompt`; every dataset task has useful
-label/note defaults, so quick captures no longer require repeated metadata
-arguments. Keep using explicit `--label`, `--note`, `--duration`, and `--param`
-values in automated runs.
-
-Every online task writes lossless `raw/serial.bin` plus
-`raw/serial.index.jsonl`. The index links every UART read to
-`host_utc_ns` and `host_monotonic_ns`; structured rows repeat the relevant
-host timestamps next to MCU/DW3000 timestamps. The recorder flushes raw,
-index, event, and CSV streams periodically so a forced stop loses only a
-small bounded tail.
-
-Reorganize a saved Session without touching a serial port:
-
-```powershell
-hopwins run do_follower_dataset --mode offline --device follower `
-  --input experiments/SESSION_NAME --label follower-reprocessed-v2
-```
-
-When multiple ST-Link boards are connected, put each board's serial number in
-`config.local.toml` under `[devices.leader]`, `[devices.follower]`,
-`[devices.sts_tx]`, or `[devices.sts_dual_rx]` so `port = "auto"` remains
-unambiguous.
-
-## STS dual-channel CIR monitor
-
-MCU commit `5058310` adds HCIR v3 for the
-`UWB-STS-Dual-RX-Diagnostic` workflow. One received UWB frame produces two
-complete records with the same capture ID: STS0 on RF1 and STS1 on RF2. Each
-record has its own CIR chunks and repeats the PDoA, TDoA, and STS ToA metadata.
-
-Connect Python to the diagnostic RX board and start live recording plus the
-dynamic monitor:
-
-```powershell
-hopwins diagnose dual_cir_monitor --device sts_dual_rx `
-  --label sts-bench-01 --notes "fixed TX/RX geometry"
-```
-
-The window shows both magnitudes with a shared dB reference, aligned to each
-channel's FPI, plus separate raw I/Q plots. Closing the window finalizes an
-experiment Session containing lossless `raw/serial.bin`, per-read timestamps,
-the effective configuration, firmware profile, and Git state. Disable recording
-only for a temporary display with `--param record=false`.
-
-Replay a recorded Session through the same pairing and visualization code:
-
-```powershell
-hopwins diagnose dual_cir_monitor --mode offline `
-  --input experiments/SESSION_NAME --param replay_speed=1
-```
-
-Generate tabular v3 metadata for later algorithms without opening the UI:
-
-```powershell
-hopwins run session_capture --mode offline `
-  --input experiments/SESSION_NAME --label metadata-pass
-```
-
-The resulting `captures.csv` has one row per channel and includes capture ID,
-CIR source, RF port, STS0/STS1 ToA, PDoA, TDoA, FPI, RSSI, and capture-window
-metadata. The complete I/Q arrays remain losslessly available in the raw HCIR
-stream so later algorithms can choose their own storage and preprocessing.
-
-Create an algorithm-ready paired dataset directly from the RX board:
-
-```powershell
-hopwins diagnose dual_cir_dataset --device sts_dual_rx --duration 60 `
-  --label los-3m-01 --notes "static boards, 3 m LOS"
-```
-
-The dataset Session keeps the lossless UART stream and also writes
-`records/dual_cir_pairs.csv`, `artifacts/cir_iq_i32le.bin`, and
-`artifacts/dataset.json`. Each CSV row is one UWB reception, links STS0 and
-STS1 by capture ID, records both array offsets, FPI/RF/quality metadata, and
-includes the experiment label. The binary file stores contiguous little-endian
-`int32` rows in `[I, Q]` order without losing the original signed I24 values.
-
-The same dataset can be derived later from an existing raw Session:
-
-```powershell
-hopwins diagnose dual_cir_dataset --mode offline `
-  --input experiments/SESSION_NAME --label reprocessed-v1
-```
-
-Load one pair in an algorithm without parsing UART packets again:
-
-```python
-from hopwins.storage.dataset import DualCirDatasetReader
-
-dataset = DualCirDatasetReader("experiments/SESSION_NAME")
-pair = dataset.read_pair(0)
-sts0_iq = pair.sts0  # shape: [samples, 2], columns: I and Q
-sts1_iq = pair.sts1
-```
-
-## Session layout
-
-```text
-experiments/TIMESTAMP_TASK_DEVICE_LABEL/
-├── manifest.json
-├── raw/
-│   ├── serial.bin
-│   └── serial.index.jsonl
-├── records/
-│   ├── events.jsonl
-│   ├── do_track.csv
-│   ├── captures.csv
-│   └── dual_cir_pairs.csv
-└── artifacts/
-    ├── dataset.json
-    └── cir_iq_i32le.bin
-```
-
-`serial.bin` is written before protocol decoding. `serial.index.jsonl` records
-the offset, length, host monotonic timestamp, UTC timestamp, and source for
-every read. This permits timing-aware offline replay and preserves malformed or
-unknown packets for future decoders.
-
-`do_track.csv` appears only when the firmware emits `DO TRACK` records.
-`captures.csv` appears only when complete HCIR captures are assembled. Large
-CIR I/Q arrays remain in the raw stream; future task modules may write NPZ or
-other files under `artifacts/` without changing the recorder.
-
-## Adding a protocol
-
-1. Add one decoder module under `protocol/`.
-2. Implement `feed(ByteChunk)`, `flush()`, and `statistics()`.
-3. Return typed `Record` instances.
-4. Register the decoder in `protocol.create_decoder()`.
-5. Add fragmented, corrupt, and version-compatibility tests.
-
-Shared framing belongs in protocol code. A task must never decode byte offsets
-or calculate a packet CRC itself.
-
-## Adding a task or diagnosis
-
-1. Add one module under `tasks/`; diagnostics may use `tasks/diagnostics/`.
-2. Implement `run_configured(context)` or use the shared `RecordTask` pipeline.
-3. Add one `TaskSpec` entry to `registry.py`.
-4. Add `[tasks.<name>]` defaults to `config.toml`.
-5. If the task creates a dataset, add a small `PROMPT = TaskPromptSpec(...)`
-   declaration for its default label, note, and user-facing typed parameters.
-6. Add tests for the task's accepted record types and outputs.
-
-For example, a new task can opt into the shared prompt behavior without adding
-any CLI code:
-
-```python
-from hopwins.core.prompts import PromptField, TaskPromptSpec
-
-PROMPT = TaskPromptSpec(
-    default_label="new-task",
-    default_notes="Default experiment note.",
-    fields=(
-        PromptField("duration_s", "Recording duration (s)", 0.0, "float"),
-    ),
-)
-```
-
-Diagnostics are ordinary tasks with category `diagnostic`; `main.py`, sources,
-protocols, and storage do not change when a new diagnosis is added.
-
-## Existing HCIR support
-
-HCIR v2/v3 parsing, CRC-32/BZIP2 validation, source-aware CIR chunk assembly,
-raw replay, CIR inspection, and the Qt monitors are supported. The mixed decoder also types
-the new `FW PROFILE`, `DO TRACK CFG`, and `DO TRACK` text records. A Follower
-using `SERIAL_CAPTURE_FORMAT_OFF` therefore produces DO tables without CIR;
-`SERIAL_CAPTURE_FORMAT_HCIR_V2` produces both DO and capture tables.
-
-## Tests
+Use `serial_probe` before protocol debugging when the question is simply
+whether bytes are arriving:
 
 ```sh
-cd Python
-python -m pytest
-python -m ruff check src tests
+hopwins list_ports
+hopwins serial_probe --device follower
 ```
 
-Tests mirror the architecture: protocol parsing, storage/session behavior,
-task outputs, and existing CIR/UI behavior are verified separately.
+It opens the configured port as 8-N-1 with flow control disabled, reports the
+received byte rate, prints a hex/ASCII preview, and saves the exact stream to a
+timestamped `.bin` file. It deliberately does not parse HCIR packets. Reset or
+power-cycle the MCU after the port opens to include boot messages. A zero-byte
+result exits with status 1 and points to a serial link, port ownership,
+baudrate, wiring, or firmware-output problem rather than an HCIR parser issue.
+Set `duration_s = 0` to run until Ctrl-C or `save = false` to suppress the raw
+file.
+
+## Configuration
+
+`config.ini` is the portable, version-controlled configuration:
+
+- `[app]` selects the active task and named device.
+- `[device.follower]` and `[device.leader]` hold serial settings and the
+  expected MCU board/role identity.
+- `[task.<name>]` contains parameters owned by one registered task.
+- `[storage]` defines timestamped capture names.
+
+An optional `config.local.ini` in the same directory is loaded after
+`config.ini`. Use it for the current `[app]` selection, machine-specific COM
+ports, or ST-Link serial numbers; it is ignored by Git.
+`config.local.ini.example` shows the supported overlay shape.
+
+With `port = auto`, the tool filters ports by VID, PID, optional description,
+and optional probe serial number. If two matching boards are connected, set a
+different `serial_number` for each named device or use explicit ports. This
+keeps the same configuration model portable across Windows AMD64 and macOS
+ARM64.
+
+Live monitoring records by default. Each `.hcir` file has a `.hcir.json`
+sidecar containing the effective configuration, resolved serial connection,
+firmware profile, time range, and byte count. The binary `.hcir` stream remains
+the source record for every session.
+
+`capture_inspect` prints a limited number of captures in human-readable form,
+including RX status, adjusted `RX_STAMP`, FPI, peak indices, power diagnostics,
+and a small I/Q table around the FPI. Configure `path`, `limit`, `cir_radius`,
+and `frame_bytes` under `[task.capture_inspect]`.
+
+The HCIR v2 `rx_timestamp` is the DW3000 fully adjusted RX timestamp: the CIA
+first-path correction has been applied and `RXANTD` has been subtracted. New
+firmware also writes coarse `RX_RAWST` into the formerly reserved final five
+header bytes and sets `RAW_TIMESTAMP_VALID`; older captures remain readable
+and report the raw value as unavailable. `capture_inspect` calculates
+`signed40(RX_STAMP - RX_RAWST + RXANTD)` when both values are present.
+HCIR v3 adds a CIR-source field plus Ipatov, STS0, and STS1 ToA/POA status,
+TDoA, and PDoA. Two Mode-3 records with the same capture ID represent the two
+STS sources; their `rf_port` fields identify the physical RF1/RF2 mapping. The
+assembler keys pending data by `(capture_id, cir_source)`, so the pair remains
+distinct while old HCIR v1/v2 recordings stay readable.
+
+## STS dual-antenna diagnostic
+
+Flash the TX workflow on the single-RF board and the dual-RX workflow on the
+two-antenna board as described in `MCU/README.md`. Record the receiver's full
+HCIR v3 stream with:
+
+```sh
+hopwins raw_record --device sts_rx
+hopwins capture_inspect
+```
+
+The `sts_rx` device profile expects `Full-SiT5156` and
+`UWB-STS-Dual-RX-Diagnostic`. `capture_inspect` prints the selected CIR source,
+RF port, three CIA ToAs, STS status/phase values, TDoA, PDoA, and an I/Q window
+around each source's own FPI. At the 100 ms TX interval, two complete
+512-sample CIRs consume about 90.7 kB/s on the 5 Mbps UART link.
+
+## Shared-clock static timing experiment
+
+Record a stationary TX/RX pair with the same 38.4 MHz reference, then analyze
+the resulting HCIR stream:
+
+```sh
+hopwins raw_record --device follower
+# Stop after the desired sample count.
+hopwins static_timing_analysis
+```
+
+The firmware schedules these test frames every 100 ms (10 Hz). A full
+1016-sample capture is about 7,967 UART bytes, so this rate uses approximately
+79.7 kB/s and 15.9% of the ideal 5 Mbps UART payload capacity.
+
+The TX application payload already carries its 32-bit delayed-transmit time and
+sequence number. The analysis therefore compares each 40-bit RX timestamp with
+that frame's actual schedule instead of assuming that no packets were lost.
+For accumulator index `n`, the plotted physical time is:
+
+```text
+t_cir(n) = RX_RAWST + n * 64 DTU + median(CIA-FPI) - RXANTD
+t_plot(n) = t_cir(n) - (TX_SCHEDULE << 8) - median(arrival)
+```
+
+`median(CIA-FPI)` is one robust session calibration constant, not a per-frame
+alignment. The CIR therefore remains tied to `RX_RAWST` and the TX schedule;
+a false CIA first-path decision can move the RXTS histogram while a stable
+physical CIR remains in place. Older captures without `RX_RAWST` use the
+algebraically equivalent `RX_STAMP + n * 64 DTU - FPI_Q10.6` compatibility
+path.
+The `0 ns` origin is the median of all valid
+`signed40(RX_STAMP - TX_SCHEDULE)` values in the selected session, not the
+first frame. Fixed counter epoch, propagation, antenna, and PCB delays are
+therefore removed without giving one noisy frame special status.
+
+The main CIR trace is the noncoherent mean power `mean(I^2 + Q^2)`. Direct
+complex averaging is not the default because packet-to-packet common phase can
+rotate and cancel a stable channel. The plot also shows median power, a
+10th-90th percentile band, the first frame, and a phase-aligned coherent
+average for comparison.
+
+The CIR-match timestamp treats the stable multipath response as one timing
+fingerprint instead of assigning identities to individual peaks. The first
+`correlation_template_frames` valid frames create a fixed template. Every
+frame is searched only within `correlation_search_half_range_ns`, and the
+normalized correlation peak is refined with a three-point parabola. The
+reported timestamp is anchored to the session median:
+
+```text
+CIR_MATCH_TS = TX_SCHEDULE + median(arrival) + matched_profile_shift
+```
+
+`complex` mode is the default for a fully static, shared-clock experiment. It
+uses the magnitude of complex normalized correlation, which rejects one common
+I/Q phase rotation while preserving the phase structure across multipath taps.
+`amplitude` mode subtracts a per-frame noise floor, compresses the envelope,
+and is the safer fallback when small environmental changes alter relative path
+phases. Correlation score and the margin to the strongest separated
+alternative peak are exported for quality gating.
+
+The original RXTS, `RAWST + FPI`, and CIR-match histograms use the same
+nanosecond reference as the CIR. The histogram uses an independent visible
+range: it defaults to `-10..+10 ns` and expands symmetrically when any valid
+timing point falls outside that range. Original and CIR-match timestamps have
+separate stacked histograms with the same viewport. The final plot compares
+both estimates versus TX sequence.
+
+`[task.static_timing_analysis]` selects the capture, optional frame limit,
+RF port, histogram width in DTU, minimum histogram half-range, initial CIR view
+range, correlation mode/template/window/search/resolution, CSV export, and
+whether to open the interactive plot. A file containing more than one RF port
+is rejected
+unless `rf_port` explicitly selects one, because RF1 and RF2 are different
+channels and must not share an average. The generated `.timing.csv` preserves
+per-frame RXTS, raw timestamp, FPI-equivalent timing, CIR-match timestamp,
+correlation quality, strongest CIR tap, RSSI, and CIR similarity.
+Absolute propagation delay still includes fixed TX/RX antenna and PCB delays;
+the experiment intentionally removes only their session median.
+
+## Dual-CIR spatial landmark timing
+
+The STS Mode-3 diagnostic produces two complete HCIR v3 records per received
+frame. Their header records the actual physical RF port, so both `AUTO_1_2`
+and `AUTO_2_1` mappings are supported. Analyze a capture from that receiver
+with:
+
+```sh
+hopwins raw_record --device sts_rx
+# Stop after the desired sample count.
+hopwins spatial_timing_analysis
+```
+
+This task requires complete paired records with `RAW_TIMESTAMP_VALID` and the
+scheduled `HWDO` TX payload. It reconstructs the two accumulator windows onto
+a common `RAWST`-referenced time axis, then selects persistent local CIR
+patches with high dual-antenna coherence and rank-one spatial structure. Each
+patch independently estimates its shift relative to the fixed training
+template; a weighted consensus produces the spatial-landmark timestamp only
+when enough patches agree.
+
+The interactive view compares exactly three centered estimates: native DW
+`RXTS`, RF1 full-CIR cross-correlation, and dual-antenna spatial landmarks.
+The FPI-equivalent timestamp remains in the CSV only as a CIA diagnostic. The
+view also shows mean RF1 and RF2 CIR power with percentile bands, their sequence
+traces, the number of landmarks that participated in each consensus, and every
+landmark's residual from that consensus. Filled markers are accepted votes;
+crosses identify a patch that disagreed with the selected timestamp. Both the
+CIR and histogram horizontal spans are selected from the recorded signal and
+timing data, so the same task can be used for LoS and delayed NLoS profiles
+without editing view bounds.
+
+`[task.spatial_timing_analysis]` controls the training length, patch geometry,
+matching range and resolution, correlation feature mode, spatial-quality gate,
+consensus tolerance, CSV export, and whether to open the visualisation. Its
+clock model is fitted once from `RX_RAWST` and applied identically to all three
+estimates. `clock_drift_mode = linear` removes the deterministic independent-
+clock rate error and reports it in ppb; use `median` only for a shared-clock
+experiment where retaining any residual frequency trend is desired. The
+generated `.spatial-timing.csv` includes the three timestamps, centered errors,
+clock model, landmark vote, consensus quality, and candidate/inlier counts. Its
+adjacent `.spatial-timing.landmarks.csv` has one row per frame and landmark,
+including the local shift, correlation score, spatial quality, coherence,
+rank-one score, track reliability, and final inlier decision. The estimator is
+an offline experiment: a missing consensus deliberately appears as an
+unavailable spatial timestamp instead of an unqualified clock-control update.
+
+## VS Code
+
+Open the repository root and select the interpreter inside `Python/.venv` once
+on each computer. The Run and Debug panel provides:
+
+- `Python: Configured Task` runs `[app] task` from the same `config.ini` used
+  by the terminal.
+- `Python: Task Override` prompts for any registered task name without editing
+  the shared configuration.
+- `Python: Tests` runs the Python test suite.
+
+Use VS Code debugging while developing parsers, analysis, or UI code. Use
+`hopwins run` in a terminal for normal captures and unattended sessions; both
+paths execute the same task registry and configuration loader.
+
+Each module under `src/hopwins/tasks` owns its task-specific configuration and
+exports `run_configured(context)`. Adding a task requires one module, one
+`TaskDefinition` entry in `tasks/registry.py`, and an optional matching
+`[task.<name>]` section. VS Code launch configurations do not need to change.
+
+`pyproject.toml` is the dependency source of truth. `requirements.lock` pins
+the tested package versions while pip selects the matching Windows AMD64 or
+macOS ARM64 wheel. Update both platforms together when refreshing the lock.

@@ -10,6 +10,7 @@ MAGIC = b"HCIR"
 V1_HEADER_LENGTH = 60
 V2_HEADER_LENGTH = 128
 V3_HEADER_LENGTH = 176
+V3_HEADER_LENGTH = 176
 MIN_HEADER_LENGTH = V1_HEADER_LENGTH
 MAX_HEADER_LENGTH = 512
 MAX_PAYLOAD_LENGTH = 8192
@@ -24,6 +25,12 @@ class PacketType(IntEnum):
     CIR_DATA = 2
 
 
+class CirSource(IntEnum):
+    IPATOV = 0
+    STS0 = 1
+    STS1 = 2
+
+
 class PacketFlags(IntFlag):
     RX_CRC_GOOD = 0x0001
     RANGING_FRAME = 0x0002
@@ -34,12 +41,6 @@ class PacketFlags(IntFlag):
     REFERENCE_TIME_VALID = 0x0040
     RAW_TIMESTAMP_VALID = 0x0080
     PDOA_DIAGNOSTIC_VALID = 0x0100
-
-
-class CirSource(IntEnum):
-    IPATOV = 0
-    STS0 = 1
-    STS1 = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,7 +94,6 @@ class HcirHeader:
     raw_rx_timestamp: int = 0
     cir_source: CirSource = CirSource.IPATOV
     cir_group_size: int = 1
-    cir_source_rf_port: int = 0
     pdoa_diagnostic_status: int = 0
     ipatov_timestamp: int = 0
     sts0_timestamp: int = 0
@@ -126,6 +126,22 @@ class HcirHeader:
     @property
     def raw_rx_timestamp_valid(self) -> bool:
         return bool(self.flags & PacketFlags.RAW_TIMESTAMP_VALID)
+
+    @property
+    def pdoa_diagnostic_valid(self) -> bool:
+        return bool(self.flags & PacketFlags.PDOA_DIAGNOSTIC_VALID)
+
+    @property
+    def cir_timestamp(self) -> int:
+        if self.cir_source is CirSource.STS0:
+            return self.sts0_timestamp
+        if self.cir_source is CirSource.STS1:
+            return self.sts1_timestamp
+        return self.ipatov_timestamp or self.rx_timestamp
+
+    @property
+    def pdoa_radians(self) -> float:
+        return self.pdoa_q1_11 / float(1 << 11)
 
     @property
     def cia_correction_dtu(self) -> int | None:
@@ -176,6 +192,8 @@ def parse_hcir_packet(raw: bytes) -> HcirPacket:
         raise ValueError("HCIR v2 header is too short")
     if version >= 3 and header_length < V3_HEADER_LENGTH:
         raise ValueError("HCIR v3 header is too short")
+    if version >= 3 and header_length < V3_HEADER_LENGTH:
+        raise ValueError("HCIR v3 header is too short")
 
     try:
         packet_type = PacketType(raw[5])
@@ -210,11 +228,15 @@ def parse_hcir_packet(raw: bytes) -> HcirPacket:
             "raw_rx_timestamp": _u40(raw, 123),
         }
     if version >= 3:
+        try:
+            cir_source = CirSource(raw[128])
+        except ValueError as exc:
+            raise ValueError(f"unknown CIR source {raw[128]}") from exc
         values.update(
             {
-                "cir_source": CirSource(raw[128]),
+                "cir_source": cir_source,
                 "cir_group_size": raw[129],
-                "cir_source_rf_port": raw[130],
+                "rf_port": raw[130],
                 "pdoa_diagnostic_status": _i8(raw, 131),
                 "ipatov_timestamp": _u40(raw, 132),
                 "sts0_timestamp": _u40(raw, 137),
@@ -288,6 +310,10 @@ def _i32(data: bytes, offset: int) -> int:
 
 def _u64(data: bytes, offset: int) -> int:
     return struct.unpack_from("<Q", data, offset)[0]
+
+
+def _i64(data: bytes, offset: int) -> int:
+    return struct.unpack_from("<q", data, offset)[0]
 
 
 def _i64(data: bytes, offset: int) -> int:

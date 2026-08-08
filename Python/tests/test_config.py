@@ -83,38 +83,20 @@ class ProjectConfigTests(unittest.TestCase):
             with self.assertRaises(ConfigurationError):
                 config.device("missing")
 
-    def test_registry_exposes_category_and_mode_metadata(self) -> None:
-        capture = TASKS["session_capture"]
-
-        self.assertEqual(capture.category, "capture")
-        self.assertTrue(capture.supports_online)
-        self.assertTrue(capture.supports_offline)
-        self.assertEqual(capture.protocol, "hcir")
-        dual = TASKS["dual_cir_monitor"]
-        self.assertEqual(dual.category, "diagnostic")
-        self.assertTrue(dual.supports_online)
-        self.assertTrue(dual.supports_offline)
-        self.assertEqual(dual.protocol, "hcir_v3")
-        self.assertEqual(TASKS["do_leader_dataset"].category, "dataset")
-        self.assertEqual(TASKS["do_follower_dataset"].category, "dataset")
-        self.assertEqual(TASKS["sts_tx_dataset"].category, "dataset")
-        self.assertTrue(TASKS["do_follower_dataset"].supports_offline)
-
-    def test_latest_capture_ignores_empty_derived_streams(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            path = root / "config.toml"
-            path.write_text(BASE_CONFIG, encoding="utf-8")
-            capture_path = root / "captures" / "recording.hcir"
-            capture_path.parent.mkdir()
-            capture_path.write_bytes(b"recorded data")
-            derived_path = root / "experiments" / "derived" / "raw" / "serial.bin"
-            derived_path.parent.mkdir(parents=True)
-            derived_path.write_bytes(b"")
-
-            latest = ProjectConfig.load(path).latest_capture_path()
-
-        self.assertEqual(latest, capture_path.resolve())
+    def test_registry_uses_stable_explicit_task_names(self) -> None:
+        self.assertEqual(
+            tuple(TASKS),
+            (
+                "cir_monitor",
+                "serial_probe",
+                "raw_record",
+                "capture_inspect",
+                "static_timing_analysis",
+                "spatial_timing_analysis",
+                "replay",
+                "list_ports",
+            ),
+        )
 
 
 if __name__ == "__main__":
