@@ -147,7 +147,7 @@ static bool start_uwb(void)
     status = uwb_service_start_periodic_transmit(&s_profile);
   } else {
     console_service_write(
-        "STS DIAG RX: RF1->RF2 Mode 3, exporting STS0+STS1 as HCIR v3\r\n");
+        "STS DIAG RX: Mode 3, exporting dual-path STS0+STS1 as HCIR v3\r\n");
     status = uwb_service_start_cir_receive(&s_profile, &cir_config);
     s_next_rx_health_ms =
         board_get_time_ms() + STS_DIAGNOSTIC_RX_HEALTH_INTERVAL_MS;
